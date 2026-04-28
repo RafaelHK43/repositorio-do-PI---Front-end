@@ -1,4 +1,4 @@
-SGAC - Front pronto para integrar com o back atual
+
 
 O que já está ligado ao backend:
 - Login com HTTP Basic
