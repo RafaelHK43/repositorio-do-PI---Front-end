@@ -3,6 +3,9 @@ export const STORAGE_KEYS = {
   user: "sgac_modular_user",
   page: "sgac_modular_page",
 };
+export const API_BASE_URL =
+  document.querySelector('meta[name="sgac-api-base"]')?.content ||
+  "http://localhost:8080/api";
 export const initialData = {
   courses: [
     {

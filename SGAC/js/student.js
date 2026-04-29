@@ -17,6 +17,181 @@ import {
   shell,
   showToast,
 } from "./ui.js";
+const API_BASE_URL = "http://localhost:8080/api";
+
+function normalizeCourse(course) {
+  return {
+    id: course?.id ?? course?.courseId ?? course?.codigo ?? "",
+    name: course?.name ?? course?.nome ?? course?.titulo ?? "Curso sem nome",
+  };
+}
+
+function resolveCourseTargets(target) {
+  if (target instanceof Element) return [target];
+  if (typeof target === "string") {
+    const element = document.querySelector(target);
+    return element ? [element] : [];
+  }
+  if (target) return Array.from(target);
+  return Array.from(
+    document.querySelectorAll("[data-cursos-select], [data-cursos-list]"),
+  );
+}
+
+function renderCoursesInElement(element, courses) {
+  if (element.matches("select")) {
+    const selectedValue = element.value;
+    element.innerHTML = courses.length
+      ? courses
+          .map(
+            (course, index) =>
+              `<option value="${course.id}" ${String(course.id) === String(selectedValue || courses[0]?.id) || (!selectedValue && index === 0) ? "selected" : ""}>${escapeHtml(course.name)}</option>`,
+          )
+          .join("")
+      : '<option value="">Nenhum curso disponível</option>';
+    if (courses.length && !courses.some((course) => String(course.id) === String(selectedValue))) {
+      element.value = String(courses[0].id);
+    }
+    return;
+  }
+
+  if (element.matches("ul, ol")) {
+    element.innerHTML = courses.length
+      ? courses
+          .map((course) => `<li data-curso-id="${course.id}">${escapeHtml(course.name)}</li>`)
+          .join("")
+      : '<li class="muted-text">Nenhum curso disponível</li>';
+    return;
+  }
+
+  const select = element.querySelector("select");
+  if (select) renderCoursesInElement(select, courses);
+
+  const list = element.querySelector("ul, ol");
+  if (list) renderCoursesInElement(list, courses);
+}
+
+function renderAreaOptions(areaSelect, courseId, areas) {
+  if (!areaSelect) return;
+  const filteredAreas = areas.filter(
+    (area) => Number(area.courseId) === Number(courseId),
+  );
+  areaSelect.innerHTML = filteredAreas.length
+    ? filteredAreas
+        .map((area) => `<option value="${area.id}">${escapeHtml(area.name)}</option>`)
+        .join("")
+    : '<option value="">Nenhuma área disponível</option>';
+}
+
+async function getApiErrorMessage(response, fallback) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    const payload = await response.json().catch(() => null);
+    return (
+      payload?.message ||
+      payload?.mensagem ||
+      payload?.error ||
+      payload?.detail ||
+      fallback
+    );
+  }
+
+  const text = await response.text().catch(() => "");
+  return text.trim() || fallback;
+}
+
+export async function carregarCursos(target = null) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/cursos`);
+    if (!response.ok) {
+      throw new Error(
+        await getApiErrorMessage(response, "Não foi possível carregar os cursos."),
+      );
+    }
+
+    const cursos = await response.json();
+    const normalizedCourses = Array.isArray(cursos)
+      ? cursos.map(normalizeCourse).filter((course) => course.id !== "")
+      : [];
+
+    resolveCourseTargets(target).forEach((element) => {
+      renderCoursesInElement(element, normalizedCourses);
+    });
+
+    return normalizedCourses;
+  } catch (error) {
+    console.error(error);
+    return [];
+  }
+}
+
+export async function salvarSubmissao(formElement, navigate) {
+  const user = getUser();
+  if (!formElement || !user) return null;
+
+  const fd = new FormData(formElement);
+  const courseId = Number(fd.get("courseId"));
+  const areaId = Number(fd.get("areaId"));
+  const title = String(fd.get("title") || "").trim();
+  const description = String(fd.get("description") || "").trim();
+  const workload = Number(fd.get("workload"));
+  const activityDate = String(fd.get("activityDate") || "");
+  const certificate = fd.get("certificado");
+
+  const payload = new FormData();
+  payload.append("studentId", String(user.id));
+  payload.append("courseId", String(courseId));
+  payload.append("areaId", String(areaId));
+  payload.append("title", title);
+  payload.append("description", description);
+  payload.append("workload", String(workload));
+  payload.append("activityDate", activityDate);
+
+  if (certificate instanceof File && certificate.size > 0) {
+    payload.append("certificado", certificate);
+    payload.append("proof_upload", certificate);
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/submissoes`, {
+      method: "POST",
+      body: payload,
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        await getApiErrorMessage(response, "Não foi possível enviar a submissão."),
+      );
+    }
+
+    createActivity({
+      studentId: user.id,
+      courseId,
+      areaId,
+      title,
+      description,
+      workload,
+      activityDate,
+      proofFile: certificate instanceof File ? certificate.name : "",
+      status: "pendente",
+      feedback: "",
+    });
+
+    formElement.reset();
+    closeModal();
+    showToast("Solicitação enviada com sucesso.", "success");
+
+    if (typeof navigate === "function") {
+      navigate("student-activities");
+    }
+
+    return true;
+  } catch (error) {
+    alert(error instanceof Error ? error.message : "Não foi possível enviar a submissão.");
+    return false;
+  }
+}
+
 function getStudentContext() {
   const user = getUser();
   const data = getData();
@@ -53,7 +228,16 @@ function activityModal(student) {
   const areas = data.areas.filter(
     (area) => Number(area.courseId) === Number(courseId),
   );
-  return `<h3>Nova Atividade</h3><form class="form-grid" id="activityForm"><label>Curso<select name="courseId" id="activityCourseSelect">${student.courseIds.map((id) => `<option value="${id}" ${Number(id) === Number(courseId) ? "selected" : ""}>${escapeHtml(getCourseName(id, data))}</option>`).join("")}</select></label><label>Área<select name="areaId" id="activityAreaSelect">${areas.map((area) => `<option value="${area.id}">${escapeHtml(area.name)}</option>`).join("")}</select></label><label>Título<input type="text" name="title" required></label><label>Carga Horária<input type="number" min="1" name="workload" required></label><label>Data da Atividade<input type="date" name="activityDate" required></label><label class="full-span">Descrição<textarea name="description" rows="4" required></textarea></label><label class="full-span">Comprovante<input type="file" name="proof_upload" accept=".pdf,.png,.jpg,.jpeg"></label>${modalActions("Enviar Solicitação")}</form>`;
+  const courseSource = Array.isArray(student.courseIds) && student.courseIds.length
+    ? student.courseIds
+    : data.courses.map((course) => course.id);
+  const courseOptions = courseSource
+    .map(
+      (id) =>
+        `<option value="${id}" ${Number(id) === Number(courseId) ? "selected" : ""}>${escapeHtml(getCourseName(id, data))}</option>`,
+    )
+    .join("");
+  return `<h3>Nova Atividade</h3><form class="form-grid" id="activityForm"><label>Curso<select name="courseId" id="activityCourseSelect" data-cursos-select>${courseOptions}</select></label><label>Área<select name="areaId" id="activityAreaSelect">${areas.map((area) => `<option value="${area.id}">${escapeHtml(area.name)}</option>`).join("")}</select></label><label>Título<input type="text" name="title" required></label><label>Carga Horária<input type="number" min="1" name="workload" required></label><label>Data da Atividade<input type="date" name="activityDate" required></label><label class="full-span">Descrição<textarea name="description" rows="4" required></textarea></label><label class="full-span">Certificado<input type="file" name="certificado" accept=".pdf,.png,.jpg,.jpeg"></label>${modalActions("Enviar Solicitação")}</form>`;
 }
 export function studentActivitiesPage() {
   const { activities, data } = getStudentContext();
@@ -98,42 +282,25 @@ export function studentRulesPage() {
 export function attachStudentPage(page, { render, navigate }) {
   const { user, data } = getStudentContext();
   document.querySelectorAll("[data-open-activity]").forEach((button) =>
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       openModal(activityModal(user));
       bindModalClose();
       const courseSelect = document.getElementById("activityCourseSelect");
       const areaSelect = document.getElementById("activityAreaSelect");
       courseSelect?.addEventListener("change", () => {
-        const areas = data.areas.filter(
-          (area) => Number(area.courseId) === Number(courseSelect.value),
-        );
-        areaSelect.innerHTML = areas
-          .map(
-            (area) =>
-              `<option value="${area.id}">${escapeHtml(area.name)}</option>`,
-          )
-          .join("");
+        renderAreaOptions(areaSelect, courseSelect.value, data.areas);
       });
+      const cursos = await carregarCursos(courseSelect);
+      renderAreaOptions(
+        areaSelect,
+        courseSelect?.value || cursos[0]?.id || data.courses[0]?.id,
+        data.areas,
+      );
       document
         .getElementById("activityForm")
-        ?.addEventListener("submit", (event) => {
+        ?.addEventListener("submit", async (event) => {
           event.preventDefault();
-          const fd = new FormData(event.currentTarget);
-          createActivity({
-            studentId: user.id,
-            courseId: Number(fd.get("courseId")),
-            areaId: Number(fd.get("areaId")),
-            title: String(fd.get("title")).trim(),
-            description: String(fd.get("description")).trim(),
-            workload: Number(fd.get("workload")),
-            activityDate: String(fd.get("activityDate")),
-            proofFile: fd.get("proof_upload")?.name || "",
-            status: "pendente",
-            feedback: "",
-          });
-          closeModal();
-          showToast("Solicitação enviada com sucesso.", "success");
-          navigate("student-activities");
+          await salvarSubmissao(event.currentTarget, navigate);
         });
     }),
   );
