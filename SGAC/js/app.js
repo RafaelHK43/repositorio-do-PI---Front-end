@@ -3,6 +3,7 @@ import {
   adminDashboardPage,
   areasPage,
   attachAdminPage,
+  adminUsersPage,
   coordinatorsPage,
   coursesPage,
   studentsPage,
@@ -27,15 +28,32 @@ const app = document.getElementById("app");
 const viewState = {
   searches: {
     courses: "",
+    "admin-users": "",
     "admin-coordinators": "",
     "admin-students": "",
     "admin-areas": "",
+    "coordinator-validate": "",
+  },
+  filters: {
+    "admin-users": { role: "all" },
+  },
+  selected: {
+    "coordinator-validate": null,
   },
 };
 function navigate(page, params = {}, rerender = true) {
   setPage(page);
   if (typeof params.search === "string")
     viewState.searches[page] = params.search;
+  if (params.filters && typeof params.filters === "object") {
+    viewState.filters[page] = {
+      ...(viewState.filters[page] || {}),
+      ...params.filters,
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(params, "selected")) {
+    viewState.selected[page] = params.selected;
+  }
   if (rerender) render();
 }
 function logout() {
@@ -50,6 +68,7 @@ function validPagesByRole(role) {
       superadmin: [
         "admin-dashboard",
         "courses",
+        "admin-users",
         "admin-coordinators",
         "admin-students",
         "admin-areas",
@@ -73,11 +92,14 @@ function pageRenderer(page) {
   return {
     "admin-dashboard": () => adminDashboardPage(),
     courses: () => coursesPage(search),
+    "admin-users": () =>
+      adminUsersPage(search, viewState.filters[page]?.role || "all"),
     "admin-coordinators": () => coordinatorsPage(search),
     "admin-students": () => studentsPage(search),
     "admin-areas": () => areasPage(search),
     "coordinator-dashboard": () => coordinatorDashboardPage(),
-    "coordinator-validate": () => coordinatorValidatePage(),
+    "coordinator-validate": () =>
+      coordinatorValidatePage(viewState.selected[page]),
     "coordinator-students": () => coordinatorStudentsPage(),
     "student-dashboard": () => studentDashboardPage(),
     "student-add": () => studentAddPage(),

@@ -81,6 +81,7 @@ export function attachLogin(onSuccess) {
       const user = buildUser(payload, { email, perfil, senha });
 
       setUser(user);
+      saveBasicToken(email, senha);
       redirectByRole(user.role);
       onSuccess();
     } catch (error) {
@@ -123,6 +124,12 @@ function buildUser(payload, fallback) {
     role,
     perfil: apiRole || fallback.perfil,
   };
+}
+
+function saveBasicToken(email, senha) {
+  const raw = `${String(email || "").trim()}:${String(senha || "").trim()}`;
+  if (raw === ":") return;
+  localStorage.setItem("tokenBasic", btoa(raw));
 }
 
 function redirectByRole(role) {

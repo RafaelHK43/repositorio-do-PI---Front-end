@@ -124,13 +124,12 @@ export const initialData = {
 export const adminNav = [
   { label: "Dashboard", page: "admin-dashboard", icon: "⌂" },
   { label: "Cursos", page: "courses", icon: "🎓" },
-  { label: "Coordenadores", page: "admin-coordinators", icon: "👥" },
+  { label: "Usuários", page: "admin-users", icon: "👥" },
   { label: "Áreas", page: "admin-areas", icon: "📘" },
-  { label: "Alunos", page: "admin-students", icon: "🧑‍🎓" },
 ];
 export const coordinatorNav = [
   { label: "Dashboard", page: "coordinator-dashboard", icon: "⌂" },
-  { label: "Validar Atividades", page: "coordinator-validate", icon: "📝" },
+  { label: "Validar Certificados", page: "coordinator-validate", icon: "📝" },
   { label: "Alunos", page: "coordinator-students", icon: "🧑‍🎓" },
 ];
 export const studentNav = [
