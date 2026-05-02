@@ -72,6 +72,18 @@ const COURSES_API_URL = "http://localhost:8080/api/cursos";
 const REGRAS_API_URL = "http://localhost:8080/api/regras";
 const USUARIOS_API_URL = "http://localhost:8080/api/usuarios";
 const DASHBOARD_API_URL = "http://localhost:8080/api/dashboard";
+const SUBMISSOES_API_URL = "http://localhost:8080/api/submissoes";
+
+const AREAS_ENUM = [
+  "Ensino",
+  "Pesquisa",
+  "Extensão",
+  "Eventos Técnicos",
+  "Cultural e Artístico",
+  "Esportivo e Lazer",
+  "Representação Estudantil",
+  "Projetos Criativos",
+];
 
 async function buscarDashboardAdminApi() {
   try {
@@ -270,15 +282,16 @@ function normalizeRegra(regra = {}) {
   return {
     id: Number(regra.id || 0),
     area: String(regra.area || regra.nome || regra.nomeArea || "").trim(),
+    cursoId: Number(regra.cursoId || regra.idCurso || 0),
     curso: String(regra.curso || regra.nomeCurso || "").trim(),
-    limite: Number(regra.limite || regra.limiteHoras || regra.hour_limit || 0),
+    limite: Number(regra.limiteHoras || regra.limite || regra.hour_limit || 0),
     descricao: String(regra.descricao || regra.description || "").trim(),
   };
 }
 
 function criarLinhaRegra(regra) {
   const item = normalizeRegra(regra);
-  return `<tr><td><strong>${escapeHtml(item.area)}</strong></td><td>${escapeHtml(item.curso)}</td><td>${item.limite}h</td><td>${escapeHtml(item.descricao || "-")}</td><td class="actions-cell"><button class="icon-btn edit btn-editar-regra" type="button" data-regra-id="${item.id}" data-regra-area="${escapeHtml(item.area)}" data-regra-curso="${escapeHtml(item.curso)}" data-regra-limite="${item.limite}" data-regra-descricao="${escapeHtml(item.descricao)}" aria-label="Editar regra">✎</button><button class="icon-btn delete btn-excluir-regra" type="button" data-regra-id="${item.id}" aria-label="Excluir regra">🗑</button></td></tr>`;
+  return `<tr><td><strong>${escapeHtml(item.area)}</strong></td><td>${escapeHtml(item.curso)}</td><td>${item.limite}h</td><td>${escapeHtml(item.descricao || "-")}</td><td class="actions-cell"><button class="icon-btn edit btn-editar-regra" type="button" data-regra-id="${item.id}" data-regra-area="${escapeHtml(item.area)}" data-regra-curso-id="${item.cursoId}" data-regra-curso="${escapeHtml(item.curso)}" data-regra-limite="${item.limite}" data-regra-descricao="${escapeHtml(item.descricao)}" aria-label="Editar regra">✎</button><button class="icon-btn delete btn-excluir-regra" type="button" data-regra-id="${item.id}" aria-label="Excluir regra">🗑</button></td></tr>`;
 }
 
 export function initTelaRegras() {
@@ -309,6 +322,19 @@ export function initTelaRegras() {
     modal.setAttribute("aria-hidden", "true");
   }
 
+  async function carregarCursosParaSelectRegra() {
+    try {
+      const response = await fetch(COURSES_API_URL, { headers: obterHeadersJsonComAuth() });
+      if (!response.ok) throw new Error();
+      const cursos = await response.json();
+      inputCurso.innerHTML = Array.isArray(cursos) && cursos.length
+        ? cursos.map((c) => `<option value="${Number(c.id)}">${escapeHtml(String(c.nome || ""))}</option>`).join("")
+        : '<option value="">Nenhum curso disponível</option>';
+    } catch {
+      showToast("Não foi possível carregar os cursos.", "danger");
+    }
+  }
+
   function prepararNovoCadastro() {
     regraEmEdicaoId = null;
     formRegra.removeAttribute("data-edit-id");
@@ -322,7 +348,7 @@ export function initTelaRegras() {
     regraEmEdicaoId = item.id;
     formRegra.dataset.editId = String(item.id);
     inputArea.value = item.area;
-    inputCurso.value = item.curso;
+    if (item.cursoId) inputCurso.value = String(item.cursoId);
     inputLimite.value = String(item.limite || 0);
     inputDescricao.value = item.descricao;
     if (tituloModal) tituloModal.textContent = "Editar Área";
@@ -352,8 +378,9 @@ export function initTelaRegras() {
     }
   }
 
-  btnNovaArea?.addEventListener("click", () => {
+  btnNovaArea?.addEventListener("click", async () => {
     prepararNovoCadastro();
+    await carregarCursosParaSelectRegra();
     abrirModal();
   });
 
@@ -374,9 +401,11 @@ export function initTelaRegras() {
     const btnExcluir = event.target.closest(".btn-excluir-regra");
 
     if (btnEditar) {
+      await carregarCursosParaSelectRegra();
       prepararEdicao({
         id: btnEditar.dataset.regraId,
         area: btnEditar.dataset.regraArea,
+        cursoId: btnEditar.dataset.regraCursoId,
         curso: btnEditar.dataset.regraCurso,
         limite: btnEditar.dataset.regraLimite,
         descricao: btnEditar.dataset.regraDescricao,
@@ -414,8 +443,8 @@ export function initTelaRegras() {
 
     const payload = {
       area: String(inputArea?.value || "").trim(),
-      curso: String(inputCurso?.value || "").trim(),
-      limite: parseInt(inputLimite?.value || "0", 10),
+      cursoId: Number(inputCurso?.value || 0),
+      limiteHoras: parseFloat(inputLimite?.value || "0"),
       descricao: String(inputDescricao?.value || "").trim(),
     };
 
@@ -702,8 +731,6 @@ export function initTelaUsuarios() {
 }
 
 export function adminDashboardPage() {
-  const data = getData();
-  const { pendingCount, approvedHours } = dashboardCards(data);
   return shell({
     roleLabel: "Administrador",
     navItems: adminNav,
@@ -711,7 +738,7 @@ export function adminDashboardPage() {
     subtitle: "Resumo consolidado para coordenação e administração.",
     heroTitle: "Painel Geral",
     heroText: "Acompanhe as principais métricas e as solicitações mais recentes.",
-    content: `<section class="stats-grid four"><div class="stat-card blue"><span>Total de Alunos</span><strong id="adash-alunos">${data.students.length}</strong><em>🧑‍🎓</em></div><div class="stat-card orange"><span>Solicitações Pendentes</span><strong id="adash-pendentes">${pendingCount}</strong><em>🕘</em></div><div class="stat-card green"><span>Total de Horas Validadas</span><strong id="adash-horas">${approvedHours}h</strong><em>✓</em></div><div class="stat-card navy"><span>Cursos Ativos</span><strong id="adash-cursos">${data.courses.length}</strong><em>🎓</em></div></section><section class="content-card"><div class="section-head"><div><h3>Solicitações Recentes</h3><p class="muted">Últimas atividades enviadas pelos alunos.</p></div></div><div class="table-wrap"><table class="custom-table dashboard-table"><thead><tr><th>Nome do Aluno</th><th>Curso</th><th>Atividade</th><th>Data</th><th>Status</th></tr></thead><tbody>${recentRequestRows(data)}</tbody></table></div></section><section id="adash-breakdown" class="content-card" hidden><div class="section-head"><div><h3>Resumo por Curso e Área</h3><p class="muted">Detalhamento das horas aprovadas por curso e categoria.</p></div></div><div id="adash-breakdown-content"></div></section>`,
+    content: `<section class="stats-grid four"><div class="stat-card blue"><span>Total de Alunos</span><strong id="adash-alunos">...</strong><em>🧑‍🎓</em></div><div class="stat-card orange"><span>Solicitações Pendentes</span><strong id="adash-pendentes">...</strong><em>🕘</em></div><div class="stat-card green"><span>Total de Horas Validadas</span><strong id="adash-horas">...</strong><em>✓</em></div><div class="stat-card navy"><span>Cursos Ativos</span><strong id="adash-cursos">...</strong><em>🎓</em></div></section><section class="content-card"><div class="section-head"><div><h3>Solicitações Recentes</h3><p class="muted">Últimas atividades enviadas pelos alunos.</p></div></div><div class="table-wrap"><table class="custom-table dashboard-table"><thead><tr><th>Nome do Aluno</th><th>Curso</th><th>Atividade</th><th>Data</th><th>Status</th></tr></thead><tbody id="adash-recent-tbody"><tr><td colspan="5" class="muted">Carregando...</td></tr></tbody></table></div></section><section id="adash-breakdown" class="content-card" hidden><div class="section-head"><div><h3>Resumo por Curso e Área</h3><p class="muted">Detalhamento das horas aprovadas por curso e categoria.</p></div></div><div id="adash-breakdown-content"></div></section>`,
   });
 }
 export function coursesPage(search = "") {
@@ -741,31 +768,17 @@ export function adminUsersPage(search = "", roleFilter = "all") {
   });
 }
 export function coordinatorsPage(search = "") {
-  const data = getData();
-  const items = filterBySearch(
-    data.coordinators,
-    search,
-    (item) =>
-      `${item.name} ${item.email} ${getCourseNames(item.courseIds, data).join(" ")}`,
-  );
   return shell({
     roleLabel: "Administrador",
     navItems: adminNav,
     heroTitle: "Gerenciar Coordenadores",
     heroText: "Cadastre coordenadores e vincule um ou mais cursos.",
     heroAction:
-      '<button class="btn btn-light" data-open-modal="coordinator">+ Novo Coordenador</button>',
-    content: `${searchInput("Buscar coordenador por nome ou e-mail...", search)}<section class="cards-grid single-column-mobile">${items.length ? items.map((item) => `<article class="person-card left-blue"><div class="person-avatar">👤</div><div class="person-body"><div class="person-head"><div><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.email)}</p></div><div class="actions-cell"><button class="icon-btn edit" data-edit-coordinator="${item.id}">✎</button><button class="icon-btn delete" data-delete-coordinator="${item.id}">🗑</button></div></div><hr><span class="person-meta">${getCourseNames(item.courseIds, data).join(", ") || "Nenhum curso vinculado"}</span></div></article>`).join("") : emptyState({ icon: "👥", title: "Nenhum coordenador encontrado", text: "Cadastre um coordenador para continuar." })}</section>${pillsCount(`${items.length} coordenador(es) encontrado(s)`)}`,
+      '<button class="btn btn-light" id="btn-novo-coordenador" type="button">+ Novo Coordenador</button>',
+    content: `<section id="coordenadores-grid" class="cards-grid single-column-mobile"><p class="muted">Carregando coordenadores...</p></section>${pillsCount('<span id="coordenadores-count">0 coordenador(es) encontrado(s)</span>')}`,
   });
 }
 export function studentsPage(search = "") {
-  const data = getData();
-  const items = filterBySearch(
-    data.students,
-    search,
-    (item) =>
-      `${item.name} ${item.email} ${getCourseNames(item.courseIds, data).join(" ")}`,
-  );
   return shell({
     roleLabel: "Administrador",
     navItems: adminNav,
@@ -773,8 +786,8 @@ export function studentsPage(search = "") {
     heroTitle: "Gerenciar Alunos",
     heroText: "Cadastre e gerencie os alunos do sistema.",
     heroAction:
-      '<button class="btn btn-light" data-open-modal="student">+ Novo Aluno</button>',
-    content: `${searchInput("Buscar aluno por nome ou e-mail...", search)}<section class="content-card table-card">${items.length ? `<div class="table-wrap"><table class="custom-table"><thead><tr><th>Nome</th><th>E-mail</th><th>Curso</th><th>Ações</th></tr></thead><tbody>${items.map((item) => `<tr><td><div class="row-with-icon"><span class="table-avatar">🎓</span><strong>${escapeHtml(item.name)}</strong></div></td><td>${escapeHtml(item.email)}</td><td>${escapeHtml(getCourseNames(item.courseIds, data).join(", ") || "Nenhum curso vinculado")}</td><td class="actions-cell"><button class="icon-btn edit" data-edit-student="${item.id}">✎</button><button class="icon-btn delete" data-delete-student="${item.id}">🗑</button></td></tr>`).join("")}</tbody></table></div>` : emptyState({ icon: "🧑‍🎓", title: "Nenhum aluno encontrado", text: "Cadastre um aluno para continuar." })}</section>${pillsCount(`${items.length} aluno(s) encontrado(s)`)}`,
+      '<button class="btn btn-light" id="btn-novo-aluno" type="button">+ Novo Aluno</button>',
+    content: `<section class="content-card table-card"><div class="table-wrap"><table class="custom-table"><thead><tr><th>Nome</th><th>E-mail</th><th>Curso</th><th>Ações</th></tr></thead><tbody id="tbody-alunos"><tr><td colspan="4" class="muted">Carregando alunos...</td></tr></tbody></table></div></section>${pillsCount('<span id="alunos-count">0 aluno(s) encontrado(s)</span>')}`,
   });
 }
 export function areasPage(search = "") {
@@ -786,7 +799,7 @@ export function areasPage(search = "") {
     heroText: "Defina limites de horas e descreva critérios por curso.",
     heroAction:
       '<button class="btn btn-light" id="btn-nova-area" type="button">Nova Área</button>',
-    content: `<section class="content-card table-card"><div class="table-wrap"><table class="custom-table"><thead><tr><th>Área</th><th>Curso</th><th>Limite</th><th>Descrição</th><th>Ações</th></tr></thead><tbody id="tbody-regras"><tr><td colspan="5" class="muted">Carregando regras...</td></tr></tbody></table></div></section>${pillsCount('<span id="regras-count">0 regra(s) encontrada(s)</span>')}<div id="modal-regra" class="modal-overlay" aria-hidden="true" hidden><div class="modal-card"><h3 id="titulo-modal-regra">Nova Área</h3><form class="form-grid" id="form-regra"><label for="input-regra-area">Área<input id="input-regra-area" type="text" name="area" required></label><label for="input-regra-curso">Curso<input id="input-regra-curso" type="text" name="curso" required></label><label for="input-regra-limite">Limite de Horas<input id="input-regra-limite" type="number" min="1" name="limite" required></label><label for="input-regra-descricao">Descrição<textarea id="input-regra-descricao" name="descricao" rows="4"></textarea></label><div class="modal-actions"><button id="btn-cancelar-regra" type="button" class="btn btn-outline">Cancelar</button><button id="btn-salvar-regra" type="submit" class="btn btn-primary">Salvar</button></div></form></div></div>`,
+    content: `<section class="content-card table-card"><div class="table-wrap"><table class="custom-table"><thead><tr><th>Área</th><th>Curso</th><th>Limite</th><th>Descrição</th><th>Ações</th></tr></thead><tbody id="tbody-regras"><tr><td colspan="5" class="muted">Carregando regras...</td></tr></tbody></table></div></section>${pillsCount('<span id="regras-count">0 regra(s) encontrada(s)</span>')}<div id="modal-regra" class="modal-overlay" aria-hidden="true" hidden><div class="modal-card"><h3 id="titulo-modal-regra">Nova Área</h3><form class="form-grid" id="form-regra"><label for="input-regra-area">Área<select id="input-regra-area" name="area" required><option value="">Selecione a área...</option>${AREAS_ENUM.map((a) => `<option value="${a}">${a}</option>`).join("")}</select></label><label for="input-regra-curso">Curso<select id="input-regra-curso" name="cursoId" required><option value="">Carregando cursos...</option></select></label><label for="input-regra-limite">Limite de Horas<input id="input-regra-limite" type="number" min="1" step="0.5" name="limiteHoras" required></label><label for="input-regra-descricao">Descrição<textarea id="input-regra-descricao" name="descricao" rows="4"></textarea></label><div class="modal-actions"><button id="btn-cancelar-regra" type="button" class="btn btn-outline">Cancelar</button><button id="btn-salvar-regra" type="submit" class="btn btn-primary">Salvar</button></div></form></div></div>`,
   });
 }
 function peopleModal(type, person = null) {
@@ -814,15 +827,23 @@ export function attachAdminPage(page, { render, navigate }) {
 
   if (page === "admin-dashboard") {
     buscarDashboardAdminApi().then((dash) => {
-      if (!dash) return;
       const elAlunos = document.getElementById("adash-alunos");
       const elPendentes = document.getElementById("adash-pendentes");
       const elHoras = document.getElementById("adash-horas");
       const elCursos = document.getElementById("adash-cursos");
-      if (elAlunos) elAlunos.textContent = dash.totalAlunos ?? dash.alunos ?? elAlunos.textContent;
-      if (elPendentes) elPendentes.textContent = dash.totalPendentes ?? dash.pendencias ?? dash.pendentes ?? elPendentes.textContent;
-      if (elHoras) elHoras.textContent = (dash.totalHorasAprovadas ?? dash.horasAprovadas ?? "") + "h";
-      if (elCursos) elCursos.textContent = dash.totalCursos ?? elCursos.textContent;
+
+      if (!dash) {
+        if (elAlunos) elAlunos.textContent = "0";
+        if (elPendentes) elPendentes.textContent = "0";
+        if (elHoras) elHoras.textContent = "0h";
+        if (elCursos) elCursos.textContent = "0";
+        return;
+      }
+
+      if (elAlunos) elAlunos.textContent = dash.totalAlunos ?? dash.alunos ?? 0;
+      if (elPendentes) elPendentes.textContent = dash.totalPendentes ?? dash.pendencias ?? dash.pendentes ?? 0;
+      if (elHoras) elHoras.textContent = (dash.totalHorasAprovadas ?? dash.horasAprovadas ?? 0) + "h";
+      if (elCursos) elCursos.textContent = dash.totalCursos ?? 0;
 
       const cursos = dash.porCurso || dash.cursos || [];
       if (cursos.length) {
@@ -844,6 +865,110 @@ export function attachAdminPage(page, { render, navigate }) {
         }
       }
     });
+
+    fetch(SUBMISSOES_API_URL, { headers: obterHeadersJsonComAuth() })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((lista) => {
+        const tbody = document.getElementById("adash-recent-tbody");
+        if (!tbody) return;
+        const recentes = (Array.isArray(lista) ? lista : []).slice(0, 5);
+        if (!recentes.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="muted">Nenhuma solicitação encontrada.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = recentes
+          .map((s) => {
+            const statusRaw = String(s.status || "PENDENTE").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+            const statusLabel = statusRaw === "aprovada" ? "Aprovado" : statusRaw === "reprovada" ? "Reprovado" : "Pendente";
+            return `<tr><td><strong>${escapeHtml(String(s.alunoNome || s.nomeAluno || "Aluno"))}</strong></td><td>${escapeHtml(String(s.cursoNome || s.nomeCurso || "-"))}</td><td>${escapeHtml(String(s.title || s.titulo || s.descricao || "-"))}</td><td>${escapeHtml(String(s.dataEnvio || s.dataCriacao || "-"))}</td><td><span class="status-badge ${statusRaw}">${statusLabel}</span></td></tr>`;
+          })
+          .join("");
+      })
+      .catch(() => {});
+  }
+
+  if (page === "admin-coordinators") {
+    (async () => {
+      const grid = document.getElementById("coordenadores-grid");
+      const count = document.getElementById("coordenadores-count");
+      try {
+        const res = await fetch(`${USUARIOS_API_URL}?perfil=COORDENADOR`, { headers: obterHeadersJsonComAuth() });
+        const lista = res.ok ? await res.json() : [];
+        if (!grid) return;
+        if (!Array.isArray(lista) || !lista.length) {
+          grid.innerHTML = emptyState({ icon: "👥", title: "Nenhum coordenador encontrado", text: "Cadastre coordenadores na página de Usuários." });
+        } else {
+          grid.innerHTML = lista
+            .map((u) => {
+              const item = normalizarUsuario(u);
+              return `<article class="person-card left-blue"><div class="person-avatar">👤</div><div class="person-body"><div class="person-head"><div><h3>${escapeHtml(item.nome)}</h3><p>${escapeHtml(item.email)}</p></div><div class="actions-cell"><button class="icon-btn delete btn-excluir-coord" type="button" data-id="${item.id}" aria-label="Excluir coordenador">🗑</button></div></div><hr><span class="person-meta">${escapeHtml(item.cursoNome || "Nenhum curso vinculado")}</span></div></article>`;
+            })
+            .join("");
+          grid.querySelectorAll(".btn-excluir-coord").forEach((btn) => {
+            btn.addEventListener("click", async () => {
+              if (!confirm("Tem certeza que deseja excluir este coordenador?")) return;
+              try {
+                const r = await fetch(`${USUARIOS_API_URL}/${btn.dataset.id}`, { method: "DELETE", headers: obterHeadersJsonComAuth() });
+                if (!r.ok) throw new Error();
+                alert("Coordenador removido.");
+                navigate("admin-coordinators");
+              } catch {
+                alert("Não foi possível excluir o coordenador.");
+              }
+            });
+          });
+        }
+        if (count) count.textContent = `${Array.isArray(lista) ? lista.length : 0} coordenador(es) encontrado(s)`;
+      } catch {
+        if (grid) grid.innerHTML = emptyState({ icon: "👥", title: "Erro ao carregar", text: "Não foi possível carregar os coordenadores." });
+      }
+      document.getElementById("btn-novo-coordenador")?.addEventListener("click", () => {
+        navigate("admin-users");
+        showToast("Use a página de Usuários para cadastrar coordenadores.", "info");
+      });
+    })();
+  }
+
+  if (page === "admin-students") {
+    (async () => {
+      const tbody = document.getElementById("tbody-alunos");
+      const count = document.getElementById("alunos-count");
+      try {
+        const res = await fetch(`${USUARIOS_API_URL}?perfil=ALUNO`, { headers: obterHeadersJsonComAuth() });
+        const lista = res.ok ? await res.json() : [];
+        if (!tbody) return;
+        if (!Array.isArray(lista) || !lista.length) {
+          tbody.innerHTML = '<tr><td colspan="4" class="muted">Nenhum aluno encontrado.</td></tr>';
+        } else {
+          tbody.innerHTML = lista
+            .map((u) => {
+              const item = normalizarUsuario(u);
+              return `<tr><td><div class="row-with-icon"><span class="table-avatar">🎓</span><strong>${escapeHtml(item.nome)}</strong></div></td><td>${escapeHtml(item.email)}</td><td>${escapeHtml(item.cursoNome || "Nenhum curso vinculado")}</td><td class="actions-cell"><button class="icon-btn delete btn-excluir-aluno" type="button" data-id="${item.id}" aria-label="Excluir aluno">🗑</button></td></tr>`;
+            })
+            .join("");
+          tbody.querySelectorAll(".btn-excluir-aluno").forEach((btn) => {
+            btn.addEventListener("click", async () => {
+              if (!confirm("Tem certeza que deseja excluir este aluno?")) return;
+              try {
+                const r = await fetch(`${USUARIOS_API_URL}/${btn.dataset.id}`, { method: "DELETE", headers: obterHeadersJsonComAuth() });
+                if (!r.ok) throw new Error();
+                alert("Aluno removido.");
+                navigate("admin-students");
+              } catch {
+                alert("Não foi possível excluir o aluno.");
+              }
+            });
+          });
+        }
+        if (count) count.textContent = `${Array.isArray(lista) ? lista.length : 0} aluno(s) encontrado(s)`;
+      } catch {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="muted">Erro ao carregar alunos.</td></tr>';
+      }
+      document.getElementById("btn-novo-aluno")?.addEventListener("click", () => {
+        navigate("admin-users");
+        showToast("Use a página de Usuários para cadastrar alunos.", "info");
+      });
+    })();
   }
 
   const searchInputEl = document.querySelector("[data-search-input]");

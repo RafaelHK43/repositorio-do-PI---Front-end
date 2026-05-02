@@ -45,6 +45,7 @@ function normalizarSubmissao(item = {}) {
       if (raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("/")) return raw;
       return `${API_BASE_URL}/uploads/${raw}`;
     })(),
+    observacaoCoordenacao: String(item.observacaoCoordenacao || item.observacao || item.ocr || "").trim(),
     status,
   };
 }
@@ -55,6 +56,10 @@ function criarLinhaSubmissao(submissao) {
     ? `<a class="btn btn-outline btn-small" href="${escapeHtml(item.comprovanteUrl)}" target="_blank" rel="noopener noreferrer">Ver Comprovante</a>`
     : '<span class="muted">Sem arquivo</span>';
 
+  const ocr = item.observacaoCoordenacao
+    ? `<span class="table-sub" title="Resultado do OCR">${escapeHtml(item.observacaoCoordenacao)}</span>`
+    : '<span class="muted">—</span>';
+
   return `<tr>
     <td><strong>${escapeHtml(item.alunoNome)}</strong></td>
     <td>${escapeHtml(item.cursoNome)}</td>
@@ -62,6 +67,7 @@ function criarLinhaSubmissao(submissao) {
     <td>${item.cargaHoraria}h</td>
     <td>${formatDate(item.dataEnvio)}</td>
     <td>${linkComprovante}</td>
+    <td>${ocr}</td>
     <td class="actions-cell wide">
       <button class="btn btn-success small btn-aprovar-submissao" type="button" data-submissao-id="${item.id}">Aprovar</button>
       <button class="btn btn-danger small btn-reprovar-submissao" type="button" data-submissao-id="${item.id}">Reprovar</button>
@@ -90,7 +96,7 @@ export function initTelaValidacoes() {
 
       tbody.innerHTML = "";
       if (!pendentes.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="muted">Nenhuma submissão pendente.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="muted">Nenhuma submissão pendente.</td></tr>';
       } else {
         pendentes.forEach((item) => {
           tbody.insertAdjacentHTML("beforeend", criarLinhaSubmissao(item));
@@ -254,11 +260,12 @@ export function coordinatorValidatePage() {
                 <th>Carga Horária</th>
                 <th>Data de Envio</th>
                 <th>Comprovante</th>
+                <th>Resultado OCR</th>
                 <th>Ações</th>
               </tr>
             </thead>
             <tbody id="tbody-validacoes">
-              <tr><td colspan="7" class="muted">Carregando submissões...</td></tr>
+              <tr><td colspan="8" class="muted">Carregando submissões...</td></tr>
             </tbody>
           </table>
         </div>
