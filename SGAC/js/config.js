@@ -1,3 +1,11 @@
+export const AREAS_ENUM = [
+  { value: "ENSINO", label: "Ensino" },
+  { value: "PESQUISA", label: "Pesquisa" },
+  { value: "EXTENSAO", label: "Extensão" },
+  { value: "CULTURA", label: "Cultura" },
+  { value: "EVENTOS", label: "Eventos" },
+];
+
 export const STORAGE_KEYS = {
   data: "sgac_modular_data",
   user: "sgac_modular_user",
@@ -125,7 +133,7 @@ export const adminNav = [
   { label: "Dashboard", page: "admin-dashboard", icon: "⌂" },
   { label: "Cursos", page: "courses", icon: "🎓" },
   { label: "Usuários", page: "admin-users", icon: "👥" },
-  { label: "Áreas", page: "admin-areas", icon: "📘" },
+  { label: "Regras", page: "admin-areas", icon: "📘" },
 ];
 export const coordinatorNav = [
   { label: "Dashboard", page: "coordinator-dashboard", icon: "⌂" },

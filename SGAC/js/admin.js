@@ -1,4 +1,4 @@
-import { adminNav } from "./config.js";
+import { adminNav, API_BASE_URL, AREAS_ENUM } from "./config.js";
 import {
   createCoordinator,
   createStudent,
@@ -68,22 +68,18 @@ function pillsCount(text) {
   return `<section class="info-banner">${text}</section>`;
 }
 
-const COURSES_API_URL = "http://localhost:8080/api/cursos";
-const REGRAS_API_URL = "http://localhost:8080/api/regras";
-const USUARIOS_API_URL = "http://localhost:8080/api/usuarios";
-const DASHBOARD_API_URL = "http://localhost:8080/api/dashboard";
-const SUBMISSOES_API_URL = "http://localhost:8080/api/submissoes";
+const COURSES_API_URL = `${API_BASE_URL}/cursos`;
+const REGRAS_API_URL = `${API_BASE_URL}/regras`;
+const USUARIOS_API_URL = `${API_BASE_URL}/usuarios`;
+const DASHBOARD_API_URL = `${API_BASE_URL}/dashboard`;
+const SUBMISSOES_API_URL = `${API_BASE_URL}/submissoes`;
 
-const AREAS_ENUM = [
-  "Ensino",
-  "Pesquisa",
-  "Extensão",
-  "Eventos Técnicos",
-  "Cultural e Artístico",
-  "Esportivo e Lazer",
-  "Representação Estudantil",
-  "Projetos Criativos",
-];
+function labelArea(enumVal = "") {
+  const found = AREAS_ENUM.find(
+    (a) => a.value === String(enumVal).toUpperCase(),
+  );
+  return found ? found.label : enumVal;
+}
 
 async function buscarDashboardAdminApi() {
   try {
@@ -158,7 +154,7 @@ export function initTelaCursos() {
     inputNomeCurso.value = nome || "";
     inputCargaHoraria.value = String(Number(cargaHorariaMinima || 0));
     if (tituloModalCurso) tituloModalCurso.textContent = "Editar Curso";
-    if (btnSalvarCurso) btnSalvarCurso.textContent = "Salvar Alteracoes";
+    if (btnSalvarCurso) btnSalvarCurso.textContent = "Salvar Alterações";
   }
 
   async function carregarCursos() {
@@ -180,7 +176,7 @@ export function initTelaCursos() {
       const count = document.getElementById("cursos-count");
       if (count) count.textContent = `${cursos.length} curso(s) encontrado(s)`;
     } catch (error) {
-      showToast("Nao foi possivel carregar os cursos da API.", "danger");
+      showToast("Não foi possível carregar os cursos. Verifique se o back está rodando na porta 8080.", "danger");
     }
   }
 
@@ -218,10 +214,10 @@ export function initTelaCursos() {
 
         if (!response.ok) throw new Error("Falha ao excluir curso");
 
-        alert("Curso excluido!");
+        showToast("Curso excluído com sucesso.", "success");
         await carregarCursos();
       } catch (error) {
-        alert("Nao foi possivel excluir o curso.");
+        showToast("Não foi possível excluir o curso.", "danger");
         console.error(error);
       }
       return;
@@ -261,15 +257,16 @@ export function initTelaCursos() {
         throw new Error(isEdicao ? "Falha ao atualizar curso" : "Falha ao salvar curso");
       }
 
-      alert(isEdicao ? "Curso atualizado!" : "Curso salvo!");
+      showToast(isEdicao ? "Curso atualizado com sucesso." : "Curso salvo com sucesso.", "success");
       prepararModalNovoCurso();
       fecharModalCurso();
       await carregarCursos();
     } catch (error) {
-      alert(
+      showToast(
         isEdicao
-          ? "Nao foi possivel atualizar o curso."
-          : "Nao foi possivel salvar o curso. Verifique se a API esta no ar.",
+          ? "Não foi possível atualizar o curso."
+          : "Não foi possível salvar o curso. Verifique se a API está no ar.",
+        "danger",
       );
       console.error(error);
     }
@@ -283,15 +280,32 @@ function normalizeRegra(regra = {}) {
     id: Number(regra.id || 0),
     area: String(regra.area || regra.nome || regra.nomeArea || "").trim(),
     cursoId: Number(regra.cursoId || regra.idCurso || 0),
-    curso: String(regra.curso || regra.nomeCurso || "").trim(),
+    curso: String(regra.curso || regra.nomeCurso || regra.cursoNome || "").trim(),
     limite: Number(regra.limiteHoras || regra.limite || regra.hour_limit || 0),
-    descricao: String(regra.descricao || regra.description || "").trim(),
   };
 }
 
 function criarLinhaRegra(regra) {
   const item = normalizeRegra(regra);
-  return `<tr><td><strong>${escapeHtml(item.area)}</strong></td><td>${escapeHtml(item.curso)}</td><td>${item.limite}h</td><td>${escapeHtml(item.descricao || "-")}</td><td class="actions-cell"><button class="icon-btn edit btn-editar-regra" type="button" data-regra-id="${item.id}" data-regra-area="${escapeHtml(item.area)}" data-regra-curso-id="${item.cursoId}" data-regra-curso="${escapeHtml(item.curso)}" data-regra-limite="${item.limite}" data-regra-descricao="${escapeHtml(item.descricao)}" aria-label="Editar regra">✎</button><button class="icon-btn delete btn-excluir-regra" type="button" data-regra-id="${item.id}" aria-label="Excluir regra">🗑</button></td></tr>`;
+  const areaLabel = escapeHtml(labelArea(item.area));
+  const areaRaw = escapeHtml(item.area);
+  return `<tr>
+    <td><strong>${areaLabel}</strong></td>
+    <td>${escapeHtml(item.curso)}</td>
+    <td>${item.limite}h</td>
+    <td class="actions-cell">
+      <button class="icon-btn edit btn-editar-regra" type="button"
+        data-regra-id="${item.id}"
+        data-regra-area="${areaRaw}"
+        data-regra-curso-id="${item.cursoId}"
+        data-regra-curso="${escapeHtml(item.curso)}"
+        data-regra-limite="${item.limite}"
+        aria-label="Editar regra">✎</button>
+      <button class="icon-btn delete btn-excluir-regra" type="button"
+        data-regra-id="${item.id}"
+        aria-label="Excluir regra">🗑</button>
+    </td>
+  </tr>`;
 }
 
 export function initTelaRegras() {
@@ -302,7 +316,6 @@ export function initTelaRegras() {
   const inputArea = document.getElementById("input-regra-area");
   const inputCurso = document.getElementById("input-regra-curso");
   const inputLimite = document.getElementById("input-regra-limite");
-  const inputDescricao = document.getElementById("input-regra-descricao");
   const tbodyRegras = document.getElementById("tbody-regras");
   const tituloModal = document.getElementById("titulo-modal-regra");
   const btnSalvar = document.getElementById("btn-salvar-regra");
@@ -339,7 +352,7 @@ export function initTelaRegras() {
     regraEmEdicaoId = null;
     formRegra.removeAttribute("data-edit-id");
     formRegra.reset();
-    if (tituloModal) tituloModal.textContent = "Nova Área";
+    if (tituloModal) tituloModal.textContent = "Nova Regra";
     if (btnSalvar) btnSalvar.textContent = "Salvar";
   }
 
@@ -347,11 +360,10 @@ export function initTelaRegras() {
     const item = normalizeRegra(regra);
     regraEmEdicaoId = item.id;
     formRegra.dataset.editId = String(item.id);
-    inputArea.value = item.area;
-    if (item.cursoId) inputCurso.value = String(item.cursoId);
-    inputLimite.value = String(item.limite || 0);
-    inputDescricao.value = item.descricao;
-    if (tituloModal) tituloModal.textContent = "Editar Área";
+    if (inputArea) inputArea.value = item.area;
+    if (item.cursoId && inputCurso) inputCurso.value = String(item.cursoId);
+    if (inputLimite) inputLimite.value = String(item.limite || 0);
+    if (tituloModal) tituloModal.textContent = "Editar Regra";
     if (btnSalvar) btnSalvar.textContent = "Salvar Alterações";
   }
 
@@ -373,7 +385,7 @@ export function initTelaRegras() {
       const count = document.getElementById("regras-count");
       if (count) count.textContent = `${regras.length} regra(s) encontrada(s)`;
     } catch (error) {
-      showToast("Nao foi possivel carregar as regras da API.", "danger");
+      showToast("Não foi possível carregar as regras. Verifique se a API está no ar.", "danger");
       console.error(error);
     }
   }
@@ -408,7 +420,6 @@ export function initTelaRegras() {
         cursoId: btnEditar.dataset.regraCursoId,
         curso: btnEditar.dataset.regraCurso,
         limite: btnEditar.dataset.regraLimite,
-        descricao: btnEditar.dataset.regraDescricao,
       });
       abrirModal();
       return;
@@ -429,10 +440,10 @@ export function initTelaRegras() {
 
         if (!response.ok) throw new Error("Falha ao excluir regra");
 
-        alert("Regra excluída!");
+        showToast("Regra excluída com sucesso.", "success");
         await carregarRegras();
       } catch (error) {
-        alert("Nao foi possivel excluir a regra.");
+        showToast("Não foi possível excluir a regra.", "danger");
         console.error(error);
       }
     }
@@ -441,11 +452,27 @@ export function initTelaRegras() {
   formRegra.addEventListener("submit", async (event) => {
     event.preventDefault();
 
+    const areaVal = String(inputArea?.value || "").trim();
+    const cursoIdVal = Number(inputCurso?.value || 0);
+    const limiteVal = parseFloat(inputLimite?.value || "0");
+
+    if (!areaVal) {
+      showToast("Selecione uma área.", "danger");
+      return;
+    }
+    if (!cursoIdVal) {
+      showToast("Selecione um curso.", "danger");
+      return;
+    }
+    if (!limiteVal || limiteVal <= 0) {
+      showToast("Informe um limite de horas válido.", "danger");
+      return;
+    }
+
     const payload = {
-      area: String(inputArea?.value || "").trim(),
-      cursoId: Number(inputCurso?.value || 0),
-      limiteHoras: parseFloat(inputLimite?.value || "0"),
-      descricao: String(inputDescricao?.value || "").trim(),
+      area: areaVal,
+      cursoId: cursoIdVal,
+      limiteHoras: limiteVal,
     };
 
     const editId = formRegra.dataset.editId || regraEmEdicaoId;
@@ -464,12 +491,12 @@ export function initTelaRegras() {
         throw new Error(isEdit ? "Falha ao atualizar regra" : "Falha ao criar regra");
       }
 
-      alert(isEdit ? "Regra atualizada!" : "Regra criada!");
+      showToast(isEdit ? "Regra atualizada com sucesso." : "Regra criada com sucesso.", "success");
       prepararNovoCadastro();
       fecharModal();
       await carregarRegras();
     } catch (error) {
-      alert(isEdit ? "Nao foi possivel atualizar a regra." : "Nao foi possivel criar a regra.");
+      showToast(isEdit ? "Não foi possível atualizar a regra." : "Não foi possível criar a regra.", "danger");
       console.error(error);
     }
   });
@@ -507,8 +534,8 @@ function criarLinhaUsuario(usuario, courseNameById = new Map()) {
   const item = normalizarUsuario(usuario);
   const cursoNomes = item.cursoIds.length
     ? item.cursoIds.map((id) => courseNameById.get(Number(id)) || `ID ${id}`).join(", ")
-    : item.cursoNome || "Nao vinculado";
-  return `<tr><td><strong>${escapeHtml(item.nome)}</strong></td><td>${escapeHtml(item.email)}</td><td><span class="status-badge neutral">${labelPerfil(item.perfil)}</span></td><td>${escapeHtml(cursoNomes)}</td><td class="actions-cell"><button class="icon-btn edit btn-editar-usuario" type="button" data-usuario-id="${item.id}" aria-label="Editar usuario">✎</button><button class="icon-btn delete btn-excluir-usuario" type="button" data-usuario-id="${item.id}" aria-label="Excluir usuario">🗑</button></td></tr>`;
+    : item.cursoNome || "Não vinculado";
+  return `<tr><td><strong>${escapeHtml(item.nome)}</strong></td><td>${escapeHtml(item.email)}</td><td><span class="status-badge neutral">${labelPerfil(item.perfil)}</span></td><td>${escapeHtml(cursoNomes)}</td><td class="actions-cell"><button class="icon-btn edit btn-editar-usuario" type="button" data-usuario-id="${item.id}" aria-label="Editar usuário">✎</button><button class="icon-btn delete btn-excluir-usuario" type="button" data-usuario-id="${item.id}" aria-label="Excluir usuário">🗑</button></td></tr>`;
 }
 
 export function initTelaUsuarios() {
@@ -546,7 +573,7 @@ export function initTelaUsuarios() {
     usuarioEmEdicaoId = null;
     formUsuario.removeAttribute("data-edit-id");
     formUsuario.reset();
-    inputSenha.required = true;
+    if (inputSenha) inputSenha.required = true;
     if (tituloModal) tituloModal.textContent = "Novo Usuário";
     if (btnSalvar) btnSalvar.textContent = "Salvar";
   }
@@ -555,16 +582,18 @@ export function initTelaUsuarios() {
     const item = normalizarUsuario(usuario);
     usuarioEmEdicaoId = item.id;
     formUsuario.dataset.editId = String(item.id);
-    inputNome.value = item.nome;
-    inputEmail.value = item.email;
-    selectPerfil.value = item.perfil || "ALUNO";
+    if (inputNome) inputNome.value = item.nome;
+    if (inputEmail) inputEmail.value = item.email;
+    if (selectPerfil) selectPerfil.value = item.perfil || "ALUNO";
     if (item.cursoIds && item.cursoIds.length) {
       Array.from(selectCurso.options).forEach((opt) => {
         opt.selected = item.cursoIds.includes(Number(opt.value));
       });
     }
-    inputSenha.value = "";
-    inputSenha.required = false;
+    if (inputSenha) {
+      inputSenha.value = "";
+      inputSenha.required = false;
+    }
     if (tituloModal) tituloModal.textContent = "Editar Usuário";
     if (btnSalvar) btnSalvar.textContent = "Salvar Alterações";
   }
@@ -586,7 +615,7 @@ export function initTelaUsuarios() {
         )
         .join("");
     } catch (error) {
-      showToast("Nao foi possivel carregar os cursos.", "danger");
+      showToast("Não foi possível carregar os cursos.", "danger");
       console.error(error);
     }
   }
@@ -598,7 +627,7 @@ export function initTelaUsuarios() {
         headers: obterHeadersJsonComAuth(),
       });
 
-      if (!response.ok) throw new Error("Falha ao carregar usuarios");
+      if (!response.ok) throw new Error("Falha ao carregar usuários");
 
       const usuarios = await response.json();
       usuariosEmTela = Array.isArray(usuarios) ? usuarios.map(normalizarUsuario) : [];
@@ -615,9 +644,9 @@ export function initTelaUsuarios() {
       });
 
       const count = document.getElementById("usuarios-count");
-      if (count) count.textContent = `${usuariosEmTela.length} usuario(s) encontrado(s)`;
+      if (count) count.textContent = `${usuariosEmTela.length} usuário(s) encontrado(s)`;
     } catch (error) {
-      showToast("Nao foi possivel carregar os usuarios da API.", "danger");
+      showToast("Não foi possível carregar os usuários da API.", "danger");
       console.error(error);
     }
   }
@@ -659,7 +688,7 @@ export function initTelaUsuarios() {
       const id = Number(btnExcluir.dataset.usuarioId);
       if (!id) return;
 
-      const confirmed = confirm("Tem certeza que deseja excluir este usuario?");
+      const confirmed = confirm("Tem certeza que deseja excluir este usuário?");
       if (!confirmed) return;
 
       try {
@@ -668,12 +697,12 @@ export function initTelaUsuarios() {
           headers: obterHeadersJsonComAuth(),
         });
 
-        if (!response.ok) throw new Error("Falha ao excluir usuario");
+        if (!response.ok) throw new Error("Falha ao excluir usuário");
 
-        alert("Usuario excluido!");
+        showToast("Usuário excluído com sucesso.", "success");
         await carregarUsuarios();
       } catch (error) {
-        alert("Nao foi possivel excluir o usuario.");
+        showToast("Não foi possível excluir o usuário.", "danger");
         console.error(error);
       }
     }
@@ -691,17 +720,17 @@ export function initTelaUsuarios() {
       .map((opt) => Number(opt.value))
       .filter(Boolean);
     if (!selectedCursoIds.length) {
-      alert("Selecione ao menos um curso.");
+      showToast("Selecione ao menos um curso.", "danger");
       return;
     }
     const payload = {
-      nome: String(inputNome.value || "").trim(),
-      email: String(inputEmail.value || "").trim(),
-      perfil: String(selectPerfil.value || "ALUNO").toUpperCase(),
+      nome: String(inputNome?.value || "").trim(),
+      email: String(inputEmail?.value || "").trim(),
+      perfil: String(selectPerfil?.value || "ALUNO").toUpperCase(),
       cursoIds: selectedCursoIds,
     };
 
-    const senha = String(inputSenha.value || "").trim();
+    const senha = String(inputSenha?.value || "").trim();
     if (!isEdit || senha) {
       payload.senha = senha;
     }
@@ -714,22 +743,24 @@ export function initTelaUsuarios() {
       });
 
       if (!response.ok) {
-        throw new Error(isEdit ? "Falha ao atualizar usuario" : "Falha ao criar usuario");
+        const errText = await response.text().catch(() => "");
+        throw new Error(errText || (isEdit ? "Falha ao atualizar usuário" : "Falha ao criar usuário"));
       }
 
-      alert(isEdit ? "Usuario atualizado!" : "Usuario criado!");
+      showToast(isEdit ? "Usuário atualizado com sucesso." : "Usuário criado com sucesso.", "success");
       resetModalNovoUsuario();
       fecharModal();
       await carregarUsuarios();
     } catch (error) {
-      alert(isEdit ? "Nao foi possivel atualizar o usuario." : "Nao foi possivel criar o usuario.");
+      showToast(
+        error instanceof Error ? error.message : (isEdit ? "Não foi possível atualizar o usuário." : "Não foi possível criar o usuário."),
+        "danger",
+      );
       console.error(error);
     }
   });
 
-  Promise.all([carregarCursosParaSelect(), carregarUsuarios()]).catch(() => {
-    // erros tratados individualmente nas funcoes
-  });
+  Promise.all([carregarCursosParaSelect(), carregarUsuarios()]).catch(() => {});
 }
 
 export function adminDashboardPage() {
@@ -747,13 +778,13 @@ export function coursesPage(search = "") {
   return shell({
     roleLabel: "Administrador",
     navItems: adminNav,
-    title: "Gestão de Cursos e Regras",
+    title: "Gestão de Cursos",
     subtitle: "Cadastre cursos e defina a carga horária mínima de validação.",
     heroTitle: "Cursos cadastrados",
-    heroText: "Use o formulário para registrar novos cursos e manter as regras atualizadas.",
+    heroText: "Use o formulário para registrar novos cursos e manter as informações atualizadas.",
     heroAction:
       '<button class="btn btn-light" id="btn-novo-curso" type="button">Novo Curso</button>',
-    content: `<section class="content-card table-card"><div class="table-wrap"><table class="custom-table"><thead><tr><th>ID</th><th>Nome do Curso</th><th>Carga Horária Mínima</th><th>Ações</th></tr></thead><tbody id="tbody-cursos"><tr><td colspan="4" class="muted">Carregando cursos...</td></tr></tbody></table></div></section>${pillsCount('<span id="cursos-count">0 curso(s) encontrado(s)</span>')}<div id="modal-novo-curso" class="modal-overlay" aria-hidden="true" hidden><div class="modal-card"><h3 id="titulo-modal-curso">Novo Curso</h3><form class="form-grid" id="form-novo-curso"><label for="input-nome-curso">Nome do Curso<input id="input-nome-curso" type="text" name="nome" required></label><label for="input-carga-horaria">Carga Horária Mínima<input id="input-carga-horaria" type="number" min="1" name="cargaHorariaMinima" required></label><div class="modal-actions"><button id="btn-cancelar-curso" type="button" class="btn btn-outline">Cancelar</button><button id="btn-salvar-curso" type="submit" class="btn btn-primary">Salvar</button></div></form></div></div>`,
+    content: `<section class="content-card table-card"><div class="table-wrap"><table class="custom-table"><thead><tr><th>ID</th><th>Nome do Curso</th><th>Carga Horária Mínima</th><th>Ações</th></tr></thead><tbody id="tbody-cursos"><tr><td colspan="4" class="muted">Carregando cursos...</td></tr></tbody></table></div></section>${pillsCount('<span id="cursos-count">0 curso(s) encontrado(s)</span>')}<div id="modal-novo-curso" class="modal-overlay" aria-hidden="true" hidden><div class="modal-card"><h3 id="titulo-modal-curso">Novo Curso</h3><form class="form-grid" id="form-novo-curso"><label for="input-nome-curso">Nome do Curso<input id="input-nome-curso" type="text" name="nome" required></label><label for="input-carga-horaria">Carga Horária Mínima (horas)<input id="input-carga-horaria" type="number" min="1" name="cargaHorariaMinima" required></label><div class="modal-actions"><button id="btn-cancelar-curso" type="button" class="btn btn-outline">Cancelar</button><button id="btn-salvar-curso" type="submit" class="btn btn-primary">Salvar</button></div></form></div></div>`,
   });
 }
 export function adminUsersPage(search = "", roleFilter = "all") {
@@ -766,7 +797,7 @@ export function adminUsersPage(search = "", roleFilter = "all") {
     heroText: "A lista e o cadastro são sincronizados diretamente com a API de usuários.",
     heroAction:
       '<button class="btn btn-light" id="btn-novo-usuario" type="button">Novo Usuário</button>',
-    content: `<section class="content-card table-card"><div class="table-wrap"><table class="custom-table"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Curso Vinculado</th><th>Ações</th></tr></thead><tbody id="tbody-usuarios"><tr><td colspan="5" class="muted">Carregando usuarios...</td></tr></tbody></table></div></section>${pillsCount('<span id="usuarios-count">0 usuario(s) encontrado(s)</span>')}<div id="modal-usuario" class="modal-overlay" aria-hidden="true" hidden><div class="modal-card"><h3 id="titulo-modal-usuario">Novo Usuário</h3><form class="form-grid" id="form-usuario"><label for="input-usuario-nome">Nome<input id="input-usuario-nome" type="text" name="nome" required></label><label for="input-usuario-email">E-mail<input id="input-usuario-email" type="email" name="email" required></label><label for="input-usuario-senha">Senha<input id="input-usuario-senha" type="password" name="senha" required></label><label for="select-usuario-perfil">Perfil<select id="select-usuario-perfil" name="perfil" required><option value="ALUNO">ALUNO</option><option value="COORDENADOR">COORDENADOR</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></label><label for="select-usuario-curso">Cursos (Ctrl+clique para múltiplos)<select id="select-usuario-curso" name="cursoIds" multiple size="4" style="height:auto;min-height:80px"></select></label><div class="modal-actions"><button id="btn-cancelar-usuario" type="button" class="btn btn-outline">Cancelar</button><button id="btn-salvar-usuario" type="submit" class="btn btn-primary">Salvar</button></div></form></div></div>`,
+    content: `<section class="content-card table-card"><div class="table-wrap"><table class="custom-table"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Curso Vinculado</th><th>Ações</th></tr></thead><tbody id="tbody-usuarios"><tr><td colspan="5" class="muted">Carregando usuários...</td></tr></tbody></table></div></section>${pillsCount('<span id="usuarios-count">0 usuário(s) encontrado(s)</span>')}<div id="modal-usuario" class="modal-overlay" aria-hidden="true" hidden><div class="modal-card"><h3 id="titulo-modal-usuario">Novo Usuário</h3><form class="form-grid" id="form-usuario"><label for="input-usuario-nome">Nome<input id="input-usuario-nome" type="text" name="nome" required></label><label for="input-usuario-email">E-mail<input id="input-usuario-email" type="email" name="email" required></label><label for="input-usuario-senha">Senha<input id="input-usuario-senha" type="password" name="senha" required></label><label for="select-usuario-perfil">Perfil<select id="select-usuario-perfil" name="perfil" required><option value="ALUNO">Aluno</option><option value="COORDENADOR">Coordenador</option><option value="SUPER_ADMIN">Administrador</option></select></label><label for="select-usuario-curso">Cursos (Ctrl+clique para múltiplos)<select id="select-usuario-curso" name="cursoIds" multiple size="4" style="height:auto;min-height:80px"></select></label><div class="modal-actions"><button id="btn-cancelar-usuario" type="button" class="btn btn-outline">Cancelar</button><button id="btn-salvar-usuario" type="submit" class="btn btn-primary">Salvar</button></div></form></div></div>`,
   });
 }
 export function coordinatorsPage(search = "") {
@@ -793,15 +824,18 @@ export function studentsPage(search = "") {
   });
 }
 export function areasPage(search = "") {
+  const areaOptions = AREAS_ENUM.map(
+    (a) => `<option value="${a.value}">${a.label}</option>`,
+  ).join("");
   return shell({
     roleLabel: "Administrador",
     navItems: adminNav,
     heroClass: "hero-amber",
-    heroTitle: "Configurar Áreas e Regras",
-    heroText: "Defina limites de horas e descreva critérios por curso.",
+    heroTitle: "Configurar Regras por Área",
+    heroText: "Defina limites de horas por área e curso.",
     heroAction:
-      '<button class="btn btn-light" id="btn-nova-area" type="button">Nova Área</button>',
-    content: `<section class="content-card table-card"><div class="table-wrap"><table class="custom-table"><thead><tr><th>Área</th><th>Curso</th><th>Limite</th><th>Descrição</th><th>Ações</th></tr></thead><tbody id="tbody-regras"><tr><td colspan="5" class="muted">Carregando regras...</td></tr></tbody></table></div></section>${pillsCount('<span id="regras-count">0 regra(s) encontrada(s)</span>')}<div id="modal-regra" class="modal-overlay" aria-hidden="true" hidden><div class="modal-card"><h3 id="titulo-modal-regra">Nova Área</h3><form class="form-grid" id="form-regra"><label for="input-regra-area">Área<select id="input-regra-area" name="area" required><option value="">Selecione a área...</option>${AREAS_ENUM.map((a) => `<option value="${a}">${a}</option>`).join("")}</select></label><label for="input-regra-curso">Curso<select id="input-regra-curso" name="cursoId" required><option value="">Carregando cursos...</option></select></label><label for="input-regra-limite">Limite de Horas<input id="input-regra-limite" type="number" min="1" step="0.5" name="limiteHoras" required></label><label for="input-regra-descricao">Descrição<textarea id="input-regra-descricao" name="descricao" rows="4"></textarea></label><div class="modal-actions"><button id="btn-cancelar-regra" type="button" class="btn btn-outline">Cancelar</button><button id="btn-salvar-regra" type="submit" class="btn btn-primary">Salvar</button></div></form></div></div>`,
+      '<button class="btn btn-light" id="btn-nova-area" type="button">Nova Regra</button>',
+    content: `<section class="content-card table-card"><div class="table-wrap"><table class="custom-table"><thead><tr><th>Área</th><th>Curso</th><th>Limite de Horas</th><th>Ações</th></tr></thead><tbody id="tbody-regras"><tr><td colspan="4" class="muted">Carregando regras...</td></tr></tbody></table></div></section>${pillsCount('<span id="regras-count">0 regra(s) encontrada(s)</span>')}<div id="modal-regra" class="modal-overlay" aria-hidden="true" hidden><div class="modal-card"><h3 id="titulo-modal-regra">Nova Regra</h3><form class="form-grid" id="form-regra"><label for="input-regra-area">Área<select id="input-regra-area" name="area" required><option value="">Selecione a área...</option>${areaOptions}</select></label><label for="input-regra-curso">Curso<select id="input-regra-curso" name="cursoId" required><option value="">Carregando cursos...</option></select></label><label for="input-regra-limite">Limite de Horas<input id="input-regra-limite" type="number" min="1" step="0.5" name="limiteHoras" required></label><div class="modal-actions"><button id="btn-cancelar-regra" type="button" class="btn btn-outline">Cancelar</button><button id="btn-salvar-regra" type="submit" class="btn btn-primary">Salvar</button></div></form></div></div>`,
   });
 }
 function peopleModal(type, person = null) {
@@ -843,8 +877,8 @@ export function attachAdminPage(page, { render, navigate }) {
       }
 
       if (elAlunos) elAlunos.textContent = dash.totalAlunos ?? dash.alunos ?? 0;
-      if (elPendentes) elPendentes.textContent = dash.totalPendentes ?? dash.pendencias ?? dash.pendentes ?? 0;
-      if (elHoras) elHoras.textContent = (dash.totalHorasAprovadas ?? dash.horasAprovadas ?? 0) + "h";
+      if (elPendentes) elPendentes.textContent = dash.submissoesPendentes ?? dash.totalPendentes ?? dash.pendentes ?? 0;
+      if (elHoras) elHoras.textContent = (dash.horasAprovadas ?? dash.totalHorasAprovadas ?? 0) + "h";
       if (elCursos) elCursos.textContent = dash.totalCursos ?? 0;
 
       const cursos = dash.metricasPorCurso || [];
@@ -859,7 +893,7 @@ export function attachAdminPage(page, { render, navigate }) {
                 <h4>${escapeHtml(String(curso.cursoNome || "Curso"))}</h4>
                 <p class="muted">${curso.alunos ?? 0} aluno(s) · ${curso.horasAprovadas ?? 0}h aprovadas · ${curso.pendentes ?? 0} pendente(s)</p>
                 ${Array.isArray(curso.metricasPorArea) && curso.metricasPorArea.length
-                  ? `<div class="table-wrap"><table class="custom-table"><thead><tr><th>Área</th><th>Horas Aprovadas</th></tr></thead><tbody>${curso.metricasPorArea.map((a) => `<tr><td>${escapeHtml(String(a.area || "-"))}</td><td>${a.horasAprovadas ?? 0}h</td></tr>`).join("")}</tbody></table></div>`
+                  ? `<div class="table-wrap"><table class="custom-table"><thead><tr><th>Área</th><th>Horas Aprovadas</th></tr></thead><tbody>${curso.metricasPorArea.map((a) => `<tr><td>${escapeHtml(labelArea(String(a.area || "-")))}</td><td>${a.horasAprovadas ?? 0}h</td></tr>`).join("")}</tbody></table></div>`
                   : ""}
               </div>`
             )
@@ -881,8 +915,8 @@ export function attachAdminPage(page, { render, navigate }) {
         tbody.innerHTML = recentes
           .map((s) => {
             const statusRaw = String(s.status || "PENDENTE").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-            const statusLabel = statusRaw === "aprovada" ? "Aprovado" : statusRaw === "reprovada" ? "Reprovado" : "Pendente";
-            return `<tr><td><strong>${escapeHtml(String(s.alunoNome || s.nomeAluno || "Aluno"))}</strong></td><td>${escapeHtml(String(s.cursoNome || s.nomeCurso || "-"))}</td><td>${escapeHtml(String(s.title || s.titulo || s.descricao || "-"))}</td><td>${escapeHtml(String(s.dataEnvio || s.dataCriacao || "-"))}</td><td><span class="status-badge ${statusRaw}">${statusLabel}</span></td></tr>`;
+            const sLabel = statusRaw === "aprovada" ? "Aprovado" : statusRaw === "reprovada" ? "Reprovado" : "Pendente";
+            return `<tr><td><strong>${escapeHtml(String(s.alunoNome || s.nomeAluno || "Aluno"))}</strong></td><td>${escapeHtml(String(s.cursoNome || s.nomeCurso || "-"))}</td><td>${escapeHtml(String(s.title || s.titulo || s.descricao || "-"))}</td><td>${escapeHtml(String(s.dataEnvio || s.dataCriacao || "-"))}</td><td><span class="status-badge ${statusRaw}">${sLabel}</span></td></tr>`;
           })
           .join("");
       })
@@ -912,10 +946,10 @@ export function attachAdminPage(page, { render, navigate }) {
               try {
                 const r = await fetch(`${USUARIOS_API_URL}/${btn.dataset.id}`, { method: "DELETE", headers: obterHeadersJsonComAuth() });
                 if (!r.ok) throw new Error();
-                alert("Coordenador removido.");
+                showToast("Coordenador removido.", "success");
                 navigate("admin-coordinators");
               } catch {
-                alert("Não foi possível excluir o coordenador.");
+                showToast("Não foi possível excluir o coordenador.", "danger");
               }
             });
           });
@@ -954,10 +988,10 @@ export function attachAdminPage(page, { render, navigate }) {
               try {
                 const r = await fetch(`${USUARIOS_API_URL}/${btn.dataset.id}`, { method: "DELETE", headers: obterHeadersJsonComAuth() });
                 if (!r.ok) throw new Error();
-                alert("Aluno removido.");
+                showToast("Aluno removido.", "success");
                 navigate("admin-students");
               } catch {
-                alert("Não foi possível excluir o aluno.");
+                showToast("Não foi possível excluir o aluno.", "danger");
               }
             });
           });

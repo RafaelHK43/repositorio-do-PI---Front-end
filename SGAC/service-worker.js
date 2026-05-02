@@ -1,4 +1,4 @@
-const CACHE_NAME = "sgac-front-v1";
+const CACHE_NAME = "sgac-front-v7";
 const FILES_TO_CACHE = [
   "./",
   "./index.html",

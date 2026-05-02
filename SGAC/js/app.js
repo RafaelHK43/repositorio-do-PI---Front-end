@@ -1,4 +1,5 @@
 import { attachLogin, loginPage } from "./auth.js";
+import { STORAGE_KEYS } from "./config.js";
 import {
   adminDashboardPage,
   areasPage,
@@ -58,7 +59,8 @@ function navigate(page, params = {}, rerender = true) {
 }
 function logout() {
   clearUser();
-  setPage("login");
+  localStorage.removeItem(STORAGE_KEYS.page);
+  localStorage.removeItem("tokenBasic");
   showToast("Sessão encerrada.", "info");
   render();
 }

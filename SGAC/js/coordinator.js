@@ -1,10 +1,24 @@
-import { coordinatorNav } from "./config.js";
+import { coordinatorNav, API_BASE_URL } from "./config.js";
 import { escapeHtml, formatDate } from "./utils.js";
 import { emptyState, shell, showToast } from "./ui.js";
 import { getUser } from "./state.js";
 
-const API_BASE_URL = "http://localhost:8080/api";
 const SUBMISSOES_API_URL = `${API_BASE_URL}/submissoes`;
+
+function montarUrlComprovante(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw || /^[a-zA-Z]:\\/.test(raw) || raw.includes("\\")) return "";
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+
+  const apiUrl = new URL(API_BASE_URL);
+  const origin = apiUrl.origin;
+  const apiPath = apiUrl.pathname.replace(/\/$/, "");
+
+  if (raw.startsWith("/api/")) return `${origin}${raw}`;
+  if (raw.startsWith("api/")) return `${origin}/${raw}`;
+  if (raw.startsWith("/")) return `${origin}${apiPath}${raw}`;
+  return `${origin}${apiPath}/uploads/${raw.replace(/^uploads\//, "")}`;
+}
 
 function obterTokenBasic() {
   return (
@@ -40,12 +54,15 @@ function normalizarSubmissao(item = {}) {
     areaNome: String(item.areaNome || item.categoria || item.area?.nome || "-").trim(),
     cargaHoraria: Number(item.cargaHoraria || item.horas || item.workload || 0),
     dataEnvio: item.dataEnvio || item.createdAt || item.dataCriacao || "",
-    comprovanteUrl: (() => {
-      const raw = String(item.comprovanteUrl || item.comprovante || item.certificadoUrl || item.proofUrl || "").trim();
-      if (!raw) return "";
-      if (raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("/")) return raw;
-      return `${API_BASE_URL}/uploads/${raw}`;
-    })(),
+    comprovanteUrl: montarUrlComprovante(
+      item.comprovanteUrl ||
+        item.certificadoUrl ||
+        item.comprovante ||
+        item.proofUrl ||
+        item.nomeArquivoComprovante ||
+        item.nomeArquivo ||
+        "",
+    ),
     observacaoCoordenacao: String(item.observacaoCoordenacao || item.observacao || item.ocr || "").trim(),
     status,
   };
@@ -54,8 +71,8 @@ function normalizarSubmissao(item = {}) {
 function criarLinhaSubmissao(submissao) {
   const item = normalizarSubmissao(submissao);
   const linkComprovante = item.comprovanteUrl
-    ? `<a class="btn btn-outline btn-small" href="${escapeHtml(item.comprovanteUrl)}" target="_blank" rel="noopener noreferrer">Ver Comprovante</a>`
-    : '<span class="muted">Sem arquivo</span>';
+    ? `<div class="activity-title-cell"><a class="btn btn-outline btn-small activity-proof-link" href="${escapeHtml(item.comprovanteUrl)}" target="_blank" rel="noopener noreferrer">Abrir comprovante</a></div>`
+    : '<div class="activity-title-cell"><span class="muted">Comprovante indisponível</span></div>';
 
   const ocr = item.observacaoCoordenacao
     ? `<span class="table-sub" title="Resultado do OCR">${escapeHtml(item.observacaoCoordenacao)}</span>`
@@ -106,7 +123,7 @@ export function initTelaValidacoes() {
 
       if (count) count.textContent = `${pendentes.length} submissão(ões) pendente(s)`;
     } catch (error) {
-      alert("Não foi possível carregar as submissões pendentes.");
+      showToast("Não foi possível carregar as submissões. Verifique se o back está rodando na porta 8080.", "danger");
       console.error(error);
     }
   }
@@ -128,10 +145,10 @@ export function initTelaValidacoes() {
         });
         if (!response.ok) throw new Error("Falha ao aprovar submissão");
 
-        alert("Submissão aprovada com sucesso!");
+        showToast("Status atualizado. O aluno será notificado por e-mail.", "success");
         await carregarSubmissoesPendentes();
       } catch (error) {
-        alert("Não foi possível aprovar a submissão.");
+        showToast("Não foi possível aprovar a submissão.", "danger");
         console.error(error);
       }
       return;
@@ -150,10 +167,10 @@ export function initTelaValidacoes() {
         });
         if (!response.ok) throw new Error("Falha ao reprovar submissão");
 
-        alert("Submissão reprovada com sucesso!");
+        showToast("Status atualizado. O aluno será notificado por e-mail.", "success");
         await carregarSubmissoesPendentes();
       } catch (error) {
-        alert("Não foi possível reprovar a submissão.");
+        showToast("Não foi possível reprovar a submissão.", "danger");
         console.error(error);
       }
     }
@@ -421,7 +438,7 @@ export function attachCoordinatorPage(page, { render, navigate }) {
         showToast("Aluno cadastrado com sucesso.", "success");
         buscarAlunosApi().then(renderAlunos);
       } catch {
-        alert("Não foi possível cadastrar o aluno.");
+        showToast("Não foi possível cadastrar o aluno.", "danger");
       }
     });
   }

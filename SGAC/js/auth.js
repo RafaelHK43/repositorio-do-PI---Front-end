@@ -21,7 +21,7 @@ export function loginPage() {
             <select name="perfil">
               <option value="ALUNO" selected>Aluno</option>
               <option value="COORDENADOR">Coordenador</option>
-              <option value="ADMINISTRADOR">Administrador</option>
+              <option value="SUPER_ADMIN">Administrador</option>
             </select>
           </label>
 
@@ -107,22 +107,36 @@ async function readErrorMessage(response) {
 }
 
 function buildUser(payload, fallback) {
+  const apiUser = payload?.usuario || payload?.user || payload?.data || payload || {};
   const roleMap = {
     ALUNO: "student",
     COORDENADOR: "coordinator",
-    ADMINISTRADOR: "superadmin",
+    SUPER_ADMIN: "superadmin",
   };
   const apiRole = String(
-    payload?.perfil || payload?.role || payload?.perfilUsuario || fallback.perfil,
+    apiUser?.perfil || apiUser?.role || apiUser?.perfilUsuario || fallback.perfil,
   ).toUpperCase();
   const role = roleMap[apiRole] || roleMap[fallback.perfil] || "student";
+  const name =
+    apiUser?.nome ||
+    apiUser?.name ||
+    apiUser?.nomeCompleto ||
+    apiUser?.email ||
+    fallback.email;
+  const courseIds = Array.isArray(apiUser?.cursoIds)
+    ? apiUser.cursoIds.map(Number).filter(Boolean)
+    : Array.isArray(apiUser?.cursos)
+    ? apiUser.cursos.map((curso) => Number(curso.id ?? curso.cursoId)).filter(Boolean)
+    : [];
 
   return {
-    id: payload?.id ?? payload?.userId ?? payload?.usuarioId ?? 0,
-    name: payload?.name ?? payload?.nome ?? payload?.nomeCompleto ?? "Usuário",
-    email: payload?.email ?? fallback.email,
+    id: apiUser?.id ?? apiUser?.userId ?? apiUser?.usuarioId ?? 0,
+    nome: name,
+    name,
+    email: apiUser?.email ?? fallback.email,
     role,
     perfil: apiRole || fallback.perfil,
+    courseIds,
   };
 }
 
