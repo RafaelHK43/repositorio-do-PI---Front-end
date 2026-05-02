@@ -10,7 +10,7 @@ import {
   updateCoordinator,
   updateStudent,
 } from "./state.js";
-import { escapeHtml, filterBySearch, uniqueNumbers } from "./utils.js";
+import { escapeHtml, filterBySearch, formatDate, uniqueNumbers } from "./utils.js";
 import {
   bindModalClose,
   closeModal,
@@ -73,6 +73,7 @@ const REGRAS_API_URL = `${API_BASE_URL}/regras`;
 const USUARIOS_API_URL = `${API_BASE_URL}/usuarios`;
 const DASHBOARD_API_URL = `${API_BASE_URL}/dashboard`;
 const SUBMISSOES_API_URL = `${API_BASE_URL}/submissoes`;
+let cursosRegrasCache = [];
 
 function labelArea(enumVal = "") {
   const found = AREAS_ENUM.find(
@@ -276,11 +277,29 @@ export function initTelaCursos() {
 }
 
 function normalizeRegra(regra = {}) {
+  const cursoObj =
+    regra.curso && typeof regra.curso === "object" ? regra.curso : null;
+  const cursoId = Number(
+    regra.cursoId || regra.idCurso || cursoObj?.id || cursoObj?.cursoId || 0,
+  );
+  const cursoCache = cursosRegrasCache.find(
+    (curso) => Number(curso.id) === cursoId,
+  );
+  const cursoNome = String(
+    regra.cursoNome ||
+      regra.nomeCurso ||
+      cursoObj?.nome ||
+      cursoObj?.name ||
+      cursoCache?.nome ||
+      cursoCache?.name ||
+      "",
+  ).trim();
+
   return {
     id: Number(regra.id || 0),
     area: String(regra.area || regra.nome || regra.nomeArea || "").trim(),
-    cursoId: Number(regra.cursoId || regra.idCurso || 0),
-    curso: String(regra.curso || regra.nomeCurso || regra.cursoNome || "").trim(),
+    cursoId,
+    curso: cursoNome || (cursoId ? "ADS" : "Curso não informado"),
     limite: Number(regra.limiteHoras || regra.limite || regra.hour_limit || 0),
   };
 }
@@ -340,11 +359,24 @@ export function initTelaRegras() {
       const response = await fetch(COURSES_API_URL, { headers: obterHeadersJsonComAuth() });
       if (!response.ok) throw new Error();
       const cursos = await response.json();
-      inputCurso.innerHTML = Array.isArray(cursos) && cursos.length
-        ? cursos.map((c) => `<option value="${Number(c.id)}">${escapeHtml(String(c.nome || ""))}</option>`).join("")
+      cursosRegrasCache = Array.isArray(cursos) ? cursos : [];
+      inputCurso.innerHTML = cursosRegrasCache.length
+        ? cursosRegrasCache.map((c) => `<option value="${Number(c.id)}">${escapeHtml(String(c.nome || c.name || ""))}</option>`).join("")
         : '<option value="">Nenhum curso disponível</option>';
     } catch {
       showToast("Não foi possível carregar os cursos.", "danger");
+    }
+  }
+
+  async function carregarCursosParaNomeRegra() {
+    if (cursosRegrasCache.length) return;
+    try {
+      const response = await fetch(COURSES_API_URL, { headers: obterHeadersJsonComAuth() });
+      if (!response.ok) throw new Error();
+      const cursos = await response.json();
+      cursosRegrasCache = Array.isArray(cursos) ? cursos : [];
+    } catch {
+      cursosRegrasCache = [];
     }
   }
 
@@ -369,6 +401,7 @@ export function initTelaRegras() {
 
   async function carregarRegras() {
     try {
+      await carregarCursosParaNomeRegra();
       const response = await fetch(REGRAS_API_URL, {
         method: "GET",
         headers: obterHeadersJsonComAuth(),
@@ -771,7 +804,7 @@ export function adminDashboardPage() {
     subtitle: "Resumo consolidado para coordenação e administração.",
     heroTitle: "Painel Geral",
     heroText: "Acompanhe as principais métricas e as solicitações mais recentes.",
-    content: `<section class="stats-grid four"><div class="stat-card blue"><span>Total de Alunos</span><strong id="adash-alunos">...</strong><em>🧑‍🎓</em></div><div class="stat-card orange"><span>Solicitações Pendentes</span><strong id="adash-pendentes">...</strong><em>🕘</em></div><div class="stat-card green"><span>Total de Horas Validadas</span><strong id="adash-horas">...</strong><em>✓</em></div><div class="stat-card navy"><span>Cursos Ativos</span><strong id="adash-cursos">...</strong><em>🎓</em></div></section><section class="content-card"><div class="section-head"><div><h3>Solicitações Recentes</h3><p class="muted">Últimas atividades enviadas pelos alunos.</p></div></div><div class="table-wrap"><table class="custom-table dashboard-table"><thead><tr><th>Nome do Aluno</th><th>Curso</th><th>Atividade</th><th>Data</th><th>Status</th></tr></thead><tbody id="adash-recent-tbody"><tr><td colspan="5" class="muted">Carregando...</td></tr></tbody></table></div></section><section id="adash-breakdown" class="content-card" hidden><div class="section-head"><div><h3>Resumo por Curso e Área</h3><p class="muted">Detalhamento das horas aprovadas por curso e categoria.</p></div></div><div id="adash-breakdown-content"></div></section>`,
+    content: `<section class="stats-grid four"><div class="stat-card blue"><span>Total de Alunos</span><strong id="adash-alunos">...</strong><em>🧑‍🎓</em></div><div class="stat-card orange"><span>Solicitações Pendentes</span><strong id="adash-pendentes">...</strong><em>🕘</em></div><div class="stat-card green"><span>Total de Horas Validadas</span><strong id="adash-horas">...</strong><em>✓</em></div><div class="stat-card navy"><span>Cursos Ativos</span><strong id="adash-cursos">...</strong><em>🎓</em></div></section><section class="content-card"><div class="section-head"><div><h3>Solicitações Recentes</h3><p class="muted">Últimas atividades enviadas pelos alunos.</p></div></div><div class="table-wrap"><table class="custom-table dashboard-table"><thead><tr><th>Nome do Aluno</th><th>Curso</th><th>Atividade</th><th>Data</th><th>Status</th><th>Ações</th></tr></thead><tbody id="adash-recent-tbody"><tr><td colspan="6" class="muted">Carregando...</td></tr></tbody></table></div></section><section id="adash-breakdown" class="content-card" hidden><div class="section-head"><div><h3>Resumo por Curso e Área</h3><p class="muted">Detalhamento das horas aprovadas por curso e categoria.</p></div></div><div id="adash-breakdown-content"></div></section>`,
   });
 }
 export function coursesPage(search = "") {
@@ -902,23 +935,54 @@ export function attachAdminPage(page, { render, navigate }) {
       }
     });
 
+    let todasSubmissoesAdmin = [];
+
+    function renderAdminRecentRows(lista) {
+      const tbody = document.getElementById("adash-recent-tbody");
+      if (!tbody) return;
+      if (!lista.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="muted">Nenhuma solicitação encontrada.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = lista
+        .map((s) => {
+          const statusRaw = String(s.status || "PENDENTE").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+          const sLabel = statusRaw === "aprovada" ? "Aprovado" : statusRaw === "reprovada" ? "Reprovado" : "Pendente";
+          const dataRaw = s.dataSubmissao || s.dataEnvio || s.createdAt || s.dataCriacao || s.dataAtividade || s.atividade?.dataAtividade || "";
+          return `<tr data-submissao-id="${s.id}"><td><strong>${escapeHtml(String(s.alunoNome || s.nomeAluno || "Aluno"))}</strong></td><td>${escapeHtml(String(s.cursoNome || s.nomeCurso || "-"))}</td><td>${escapeHtml(String(s.title || s.titulo || s.descricao || "-"))}</td><td>${escapeHtml(formatDate(dataRaw))}</td><td><span class="status-badge ${statusRaw}">${sLabel}</span></td><td class="actions-cell"><button class="icon-btn delete btn-excluir-submissao" type="button" data-submissao-id="${s.id}" aria-label="Excluir submissão">🗑</button></td></tr>`;
+        })
+        .join("");
+
+      tbody.querySelectorAll(".btn-excluir-submissao").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.submissaoId;
+          if (!confirm("Tem certeza que deseja excluir esta submissão?")) return;
+          try {
+            const r = await fetch(`${SUBMISSOES_API_URL}/${id}`, {
+              method: "DELETE",
+              headers: obterHeadersJsonComAuth(),
+            });
+            if (!r.ok) throw new Error("Falha ao excluir");
+            showToast("Submissão excluída com sucesso.", "success");
+            todasSubmissoesAdmin = todasSubmissoesAdmin.filter((s) => String(s.id) !== String(id));
+            renderAdminRecentRows(todasSubmissoesAdmin.slice(0, 5));
+            buscarDashboardAdminApi().then((dash) => {
+              if (!dash) return;
+              const el = document.getElementById("adash-pendentes");
+              if (el) el.textContent = dash.submissoesPendentes ?? dash.totalPendentes ?? dash.pendentes ?? 0;
+            });
+          } catch {
+            showToast("Não foi possível excluir a submissão.", "danger");
+          }
+        });
+      });
+    }
+
     fetch(SUBMISSOES_API_URL, { headers: obterHeadersJsonComAuth() })
       .then((res) => (res.ok ? res.json() : []))
       .then((lista) => {
-        const tbody = document.getElementById("adash-recent-tbody");
-        if (!tbody) return;
-        const recentes = (Array.isArray(lista) ? lista : []).slice(0, 5);
-        if (!recentes.length) {
-          tbody.innerHTML = '<tr><td colspan="5" class="muted">Nenhuma solicitação encontrada.</td></tr>';
-          return;
-        }
-        tbody.innerHTML = recentes
-          .map((s) => {
-            const statusRaw = String(s.status || "PENDENTE").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-            const sLabel = statusRaw === "aprovada" ? "Aprovado" : statusRaw === "reprovada" ? "Reprovado" : "Pendente";
-            return `<tr><td><strong>${escapeHtml(String(s.alunoNome || s.nomeAluno || "Aluno"))}</strong></td><td>${escapeHtml(String(s.cursoNome || s.nomeCurso || "-"))}</td><td>${escapeHtml(String(s.title || s.titulo || s.descricao || "-"))}</td><td>${escapeHtml(String(s.dataEnvio || s.dataCriacao || "-"))}</td><td><span class="status-badge ${statusRaw}">${sLabel}</span></td></tr>`;
-          })
-          .join("");
+        todasSubmissoesAdmin = Array.isArray(lista) ? lista : [];
+        renderAdminRecentRows(todasSubmissoesAdmin.slice(0, 5));
       })
       .catch(() => {});
   }

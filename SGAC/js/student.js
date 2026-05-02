@@ -6,6 +6,7 @@ import {
   getUser,
 } from "./state.js";
 import { escapeHtml, formatDate, statusClass } from "./utils.js";
+import { abrirArquivoProtegido, baixarArquivoProtegido } from "./protected-file.js";
 import {
   bindModalClose,
   closeModal,
@@ -482,7 +483,10 @@ export async function studentActivitiesPage() {
       );
       const st = String(activity.status).toLowerCase();
       const comprovante = activity.comprovanteUrl
-        ? `<a class="btn btn-outline btn-small activity-proof-link" href="${escapeHtml(activity.comprovanteUrl)}" target="_blank" rel="noopener noreferrer">Ver comprovante</a>`
+        ? `<div class="comprovante-btns">
+            <button class="btn btn-outline btn-small activity-proof-link" type="button" data-proof-open="${escapeHtml(activity.comprovanteUrl)}">Ver comprovante</button>
+            <button class="btn btn-outline btn-small" type="button" data-proof-download="${escapeHtml(activity.comprovanteUrl)}" data-proof-name="${escapeHtml(activity.proofFile || "")}">Baixar comprovante</button>
+          </div>`
         : '<span class="muted">Comprovante indisponível</span>';
       return `<tr>
         <td>
@@ -646,12 +650,9 @@ export async function studentRulesPage() {
     }
   }
 
-  // Fallback para dados locais se não houver regras da API
-  if (!regras.length && courseId) {
-    regras = data.areas
-      .filter((a) => Number(a.courseId) === Number(courseId))
-      .map((a) => ({ area: a.name, limiteHoras: a.hour_limit }));
-  }
+  const cursoExibicao = courseName && courseName !== "Nenhum curso vinculado"
+    ? courseName
+    : courseId ? "ADS" : "Nenhum curso vinculado";
 
   const regrasHtml = regras.length
     ? `<section class="cards-grid rules-summary-grid">${regras
@@ -660,13 +661,15 @@ export async function studentRulesPage() {
             `<div class="summary-card"><strong>${escapeHtml(areaEnumToLabel(r.area || ""))}</strong><span>${r.limiteHoras || 0}h máximas</span></div>`,
         )
         .join("")}</section>`
+    : studentRulesReference.length
+    ? ""
     : `<section class="cards-grid rules-summary-grid"><p class="muted">Nenhuma regra cadastrada para este curso. O administrador deve configurar as regras primeiro.</p></section>`;
 
   return shell({
     roleLabel: "Atividades Complementares",
     navItems: studentNav,
     title: "Regras do Curso",
-    subtitle: `Curso atual: ${escapeHtml(courseName)}`,
+    subtitle: `Curso atual: ${escapeHtml(cursoExibicao)}`,
     content: `
       <section class="student-rules-alert">As regras abaixo orientam o cadastro das atividades e o limite de horas por categoria.</section>
       ${regrasHtml}
@@ -717,6 +720,21 @@ export function attachStudentPage(page, { render, navigate }) {
   document.querySelectorAll("[data-delete-activity]").forEach((button) =>
     button.addEventListener("click", () => {
       showToast("Atividade enviada. Para cancelar, contate a coordenação.", "info");
+    }),
+  );
+
+  document.querySelectorAll("[data-proof-open]").forEach((button) =>
+    button.addEventListener("click", async () => {
+      await abrirArquivoProtegido(button.dataset.proofOpen || "");
+    }),
+  );
+
+  document.querySelectorAll("[data-proof-download]").forEach((button) =>
+    button.addEventListener("click", async () => {
+      await baixarArquivoProtegido(
+        button.dataset.proofDownload || "",
+        button.dataset.proofName || "",
+      );
     }),
   );
 }

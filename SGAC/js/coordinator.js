@@ -2,8 +2,10 @@ import { coordinatorNav, API_BASE_URL } from "./config.js";
 import { escapeHtml, formatDate } from "./utils.js";
 import { emptyState, shell, showToast } from "./ui.js";
 import { getUser } from "./state.js";
+import { abrirArquivoProtegido, baixarArquivoProtegido } from "./protected-file.js";
 
 const SUBMISSOES_API_URL = `${API_BASE_URL}/submissoes`;
+const ocrPorSubmissao = new Map();
 
 function montarUrlComprovante(value = "") {
   const raw = String(value || "").trim();
@@ -41,19 +43,32 @@ function statusLabel(status = "") {
   return "Pendente";
 }
 
+function labelArea(enumVal = "") {
+  const map = { ENSINO: "Ensino", PESQUISA: "Pesquisa", EXTENSAO: "Extensão", CULTURA: "Cultura", EVENTOS: "Eventos" };
+  const key = String(enumVal).trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  return map[key] || enumVal || "-";
+}
+
 function normalizarSubmissao(item = {}) {
   const statusRaw = String(item.status || item.situacao || "PENDENTE").toUpperCase();
   const status = statusRaw
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
+  const areaRaw = String(
+    item.area || item.areaNome || item.categoria || item.areaAtividade || item.atividade?.area || ""
+  ).trim();
+  const dataRaw = item.dataSubmissao || item.dataEnvio || item.createdAt || item.dataCriacao || item.dataAtividade || item.atividade?.dataAtividade || "";
+  const ocrRaw = String(
+    item.resultadoOcr || item.resultado_ocr || item.ocr || item.observacaoOcr || item.observacaoCoordenacao || item.observacao || ""
+  ).trim();
   return {
     id: Number(item.id || item.submissaoId || 0),
     alunoNome: String(item.alunoNome || item.nomeAluno || item.aluno?.nome || "Aluno").trim(),
     cursoNome: String(item.cursoNome || item.nomeCurso || item.curso?.nome || "-").trim(),
-    areaNome: String(item.areaNome || item.categoria || item.area?.nome || "-").trim(),
+    areaNome: areaRaw ? labelArea(areaRaw) : "-",
     cargaHoraria: Number(item.cargaHoraria || item.horas || item.workload || 0),
-    dataEnvio: item.dataEnvio || item.createdAt || item.dataCriacao || "",
+    dataEnvio: dataRaw,
     comprovanteUrl: montarUrlComprovante(
       item.comprovanteUrl ||
         item.certificadoUrl ||
@@ -63,20 +78,30 @@ function normalizarSubmissao(item = {}) {
         item.nomeArquivo ||
         "",
     ),
-    observacaoCoordenacao: String(item.observacaoCoordenacao || item.observacao || item.ocr || "").trim(),
+    ocr: ocrRaw,
     status,
   };
 }
 
 function criarLinhaSubmissao(submissao) {
   const item = normalizarSubmissao(submissao);
-  const linkComprovante = item.comprovanteUrl
-    ? `<div class="activity-title-cell"><a class="btn btn-outline btn-small activity-proof-link" href="${escapeHtml(item.comprovanteUrl)}" target="_blank" rel="noopener noreferrer">Abrir comprovante</a></div>`
-    : '<div class="activity-title-cell"><span class="muted">Comprovante indisponível</span></div>';
+  if (item.ocr) {
+    ocrPorSubmissao.set(String(item.id), item.ocr);
+  }
 
-  const ocr = item.observacaoCoordenacao
-    ? `<span class="table-sub" title="Resultado do OCR">${escapeHtml(item.observacaoCoordenacao)}</span>`
-    : '<span class="muted">—</span>';
+  const linkComprovante = item.comprovanteUrl
+    ? `<div class="comprovante-btns">
+        <button class="btn btn-outline btn-small activity-proof-link" type="button" data-proof-open="${escapeHtml(item.comprovanteUrl)}">Abrir comprovante</button>
+        <button class="btn btn-outline btn-small" type="button" data-proof-download="${escapeHtml(item.comprovanteUrl)}">Baixar comprovante</button>
+      </div>`
+    : '<span class="muted">Comprovante indisponível</span>';
+
+  const ocrCell = item.ocr
+    ? `<div class="ocr-cell-wrap">
+        <span class="status-badge neutral">Processado</span>
+        <button class="btn btn-outline btn-small btn-ver-ocr" type="button" data-ocr-id="${item.id}">Ver OCR</button>
+      </div>`
+    : '<span class="muted">OCR não processado</span>';
 
   return `<tr>
     <td><strong>${escapeHtml(item.alunoNome)}</strong></td>
@@ -85,12 +110,31 @@ function criarLinhaSubmissao(submissao) {
     <td>${item.cargaHoraria}h</td>
     <td>${formatDate(item.dataEnvio)}</td>
     <td>${linkComprovante}</td>
-    <td>${ocr}</td>
+    <td class="ocr-col">${ocrCell}</td>
     <td class="actions-cell wide">
       <button class="btn btn-success small btn-aprovar-submissao" type="button" data-submissao-id="${item.id}">Aprovar</button>
       <button class="btn btn-danger small btn-reprovar-submissao" type="button" data-submissao-id="${item.id}">Reprovar</button>
     </td>
   </tr>`;
+}
+
+function abrirModalOcr(texto = "") {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `<div class="modal-card ocr-modal-card">
+    <h3>Resultado OCR</h3>
+    <div class="ocr-modal-text">${escapeHtml(texto || "OCR não processado")}</div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" data-modal-close>Fechar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  const fechar = () => overlay.remove();
+  overlay.querySelector("[data-modal-close]")?.addEventListener("click", fechar);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) fechar();
+  });
 }
 
 export function initTelaValidacoes() {
@@ -112,6 +156,7 @@ export function initTelaValidacoes() {
         .map(normalizarSubmissao)
         .filter((item) => item.status === "PENDENTE");
 
+      ocrPorSubmissao.clear();
       tbody.innerHTML = "";
       if (!pendentes.length) {
         tbody.innerHTML = '<tr><td colspan="8" class="muted">Nenhuma submissão pendente.</td></tr>';
@@ -129,8 +174,26 @@ export function initTelaValidacoes() {
   }
 
   tbody.addEventListener("click", async (event) => {
+    const btnOcr = event.target.closest(".btn-ver-ocr");
+    const btnAbrirComprovante = event.target.closest("[data-proof-open]");
+    const btnBaixarComprovante = event.target.closest("[data-proof-download]");
     const btnAprovar = event.target.closest(".btn-aprovar-submissao");
     const btnReprovar = event.target.closest(".btn-reprovar-submissao");
+
+    if (btnAbrirComprovante) {
+      await abrirArquivoProtegido(btnAbrirComprovante.dataset.proofOpen || "");
+      return;
+    }
+
+    if (btnBaixarComprovante) {
+      await baixarArquivoProtegido(btnBaixarComprovante.dataset.proofDownload || "");
+      return;
+    }
+
+    if (btnOcr) {
+      abrirModalOcr(ocrPorSubmissao.get(String(btnOcr.dataset.ocrId)) || "");
+      return;
+    }
 
     if (btnAprovar) {
       const id = btnAprovar.dataset.submissaoId;
@@ -372,24 +435,95 @@ export function attachCoordinatorPage(page, { render, navigate }) {
   }
 
   if (page === "coordinator-students") {
-    function renderAlunos(alunos) {
+    (async () => {
       const grid = document.getElementById("students-grid");
       if (!grid) return;
-      if (!alunos || alunos.length === 0) {
-        grid.innerHTML = emptyState({ icon: "🎓", title: "Nenhum aluno vinculado", text: "Não há alunos registrados nos seus cursos." });
-        return;
-      }
-      grid.innerHTML = alunos.map((student) => {
-        const cursosList = Array.isArray(student.cursos)
-          ? student.cursos.map((c) => c.nome || c.name).join(", ")
-          : "Curso não especificado";
-        return `<article class="person-card"><div class="person-avatar">🎓</div><div class="person-body"><div class="person-head no-actions"><div><h3>${escapeHtml(student.nome || student.name || "Aluno")}</h3><p>${escapeHtml(student.email || "")}</p></div></div><hr><span class="person-meta">${escapeHtml(cursosList)}</span></div></article>`;
-      }).join("");
-      const subtitleEl = document.querySelector(".page-head p");
-      if (subtitleEl) subtitleEl.textContent = `${alunos.length} aluno(s) encontrados`;
-    }
+      const headers = obterHeadersJsonComAuth();
+      try {
+        const [alunos, todasSubmissoes, cursos] = await Promise.all([
+          buscarAlunosApi(),
+          fetch(`${API_BASE_URL}/submissoes`, { headers }).then((r) => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${API_BASE_URL}/cursos`, { headers }).then((r) => r.ok ? r.json() : []).catch(() => []),
+        ]);
 
-    buscarAlunosApi().then(renderAlunos);
+        const subtitleEl = document.querySelector(".page-head p");
+
+        if (!alunos || !alunos.length) {
+          grid.innerHTML = emptyState({ icon: "🎓", title: "Nenhum aluno vinculado", text: "Nenhum aluno vinculado ao curso." });
+          if (subtitleEl) subtitleEl.textContent = "Nenhum aluno encontrado";
+          return;
+        }
+
+        const submissoesList = Array.isArray(todasSubmissoes) ? todasSubmissoes : [];
+        const cursosList = Array.isArray(cursos) ? cursos : [];
+
+        const normalizeStatus = (s) =>
+          String(s || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+        grid.innerHTML = alunos.map((student) => {
+          const nome = escapeHtml(student.nome || student.name || "Aluno");
+          const email = escapeHtml(student.email || "");
+          const studentId = Number(student.id || 0);
+
+          const cursoIds = Array.isArray(student.cursoIds)
+            ? student.cursoIds.map(Number)
+            : Array.isArray(student.cursos)
+            ? student.cursos.map((c) => Number(c.id))
+            : student.cursoId ? [Number(student.cursoId)] : [];
+
+          const cursoNome = cursoIds.length
+            ? cursoIds.map((cid) => {
+                const c = cursosList.find((x) => Number(x.id) === cid);
+                return c ? (c.nome || c.name || `Curso ${cid}`) : `Curso ${cid}`;
+              }).join(", ")
+            : (student.cursoNome || student.nomeCurso || "Curso não especificado");
+
+          const cargaMinima = (() => {
+            const c = cursosList.find((x) => cursoIds.includes(Number(x.id)));
+            return Number(c?.cargaHorariaMinima || 120);
+          })();
+
+          const subs = submissoesList.filter((s) =>
+            Number(s.alunoId || s.studentId || s.aluno?.id) === studentId
+          );
+          const aprovadas = subs.filter((s) => normalizeStatus(s.status) === "APROVADA");
+          const pendentes = subs.filter((s) => normalizeStatus(s.status) === "PENDENTE");
+          const reprovadas = subs.filter((s) => normalizeStatus(s.status) === "REPROVADA");
+          const horasAprovadas = aprovadas.reduce(
+            (t, s) => t + Number(s.cargaHoraria || s.horas || s.workload || 0), 0
+          );
+          const progresso = Math.min(100, Math.round((horasAprovadas / cargaMinima) * 100));
+
+          return `<article class="person-card">
+            <div class="person-body">
+              <div class="person-head no-actions">
+                <div class="person-avatar">🎓</div>
+                <div>
+                  <h3>${nome}</h3>
+                  <p>${email}</p>
+                  <small class="muted">Curso: ${escapeHtml(cursoNome)}</small>
+                </div>
+              </div>
+              <hr>
+              <div style="display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem">
+                <span class="status-badge neutral">${subs.length} atividade(s)</span>
+                <span class="status-badge pendente">${pendentes.length} pendente(s)</span>
+                <span class="status-badge aprovada">${aprovadas.length} aprovada(s)</span>
+                <span class="status-badge reprovada">${reprovadas.length} reprovada(s)</span>
+              </div>
+              <div>
+                <small>${horasAprovadas}h aprovadas / ${cargaMinima}h mínimas &mdash; ${progresso}%</small>
+                <div class="student-progress-bar" style="margin-top:4px"><div style="width:${progresso}%"></div></div>
+              </div>
+            </div>
+          </article>`;
+        }).join("");
+
+        if (subtitleEl) subtitleEl.textContent = `${alunos.length} aluno(s) encontrado(s)`;
+      } catch {
+        if (grid) grid.innerHTML = emptyState({ icon: "🎓", title: "Erro ao carregar", text: "Não foi possível carregar os alunos." });
+      }
+    })();
 
     const modal = document.getElementById("modal-novo-aluno-coord");
     const formNovoAluno = document.getElementById("form-novo-aluno-coord");

@@ -1006,6 +1006,32 @@ body {
   background: #edf2f7;
   color: #4b5563;
 }
+.comprovante-btns,
+.ocr-cell-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ocr-col {
+  max-width: 220px;
+}
+.ocr-modal-card {
+  max-width: 760px;
+}
+.ocr-modal-text {
+  max-height: 55vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  color: #334155;
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
 .page-kicker {
   color: var(--orange);
   text-transform: uppercase;

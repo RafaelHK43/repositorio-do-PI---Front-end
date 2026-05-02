@@ -1,4 +1,4 @@
-const CACHE_NAME = "sgac-front-v7";
+const CACHE_NAME = "sgac-front-v12";
 const FILES_TO_CACHE = [
   "./",
   "./index.html",
@@ -8,6 +8,7 @@ const FILES_TO_CACHE = [
   "./js/state.js",
   "./js/utils.js",
   "./js/ui.js",
+  "./js/protected-file.js",
   "./js/auth.js",
   "./js/admin.js",
   "./js/student.js",

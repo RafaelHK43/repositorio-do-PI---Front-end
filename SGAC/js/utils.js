@@ -8,8 +8,13 @@ export function escapeHtml(value = "") {
 }
 export function formatDate(value) {
   if (!value) return "-";
-  const [year, month, day] = String(value).split("-");
-  return year && month && day ? `${day}/${month}/${year}` : value;
+  const str = String(value).trim();
+  const datePart = str.split("T")[0].split(" ")[0];
+  const parts = datePart.split("-");
+  if (parts.length === 3 && parts[0].length === 4) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return str;
 }
 export function statusClass(status = "") {
   if (status === "aprovada") return "tag aprovada";
