@@ -39,9 +39,12 @@ function normalizarSubmissao(item = {}) {
     areaNome: String(item.areaNome || item.categoria || item.area?.nome || "-").trim(),
     cargaHoraria: Number(item.cargaHoraria || item.horas || item.workload || 0),
     dataEnvio: item.dataEnvio || item.createdAt || item.dataCriacao || "",
-    comprovanteUrl: String(
-      item.comprovanteUrl || item.comprovante || item.certificadoUrl || item.proofUrl || "",
-    ).trim(),
+    comprovanteUrl: (() => {
+      const raw = String(item.comprovanteUrl || item.comprovante || item.certificadoUrl || item.proofUrl || "").trim();
+      if (!raw) return "";
+      if (raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("/")) return raw;
+      return `${API_BASE_URL}/uploads/${raw}`;
+    })(),
     status,
   };
 }
@@ -206,6 +209,15 @@ export function coordinatorDashboardPage() {
           <em>✕</em>
         </div>
       </section>
+      <section id="dash-breakdown" class="content-card" hidden>
+        <div class="section-head">
+          <div>
+            <h3>Resumo por Curso e Área</h3>
+            <p class="muted">Detalhamento das horas aprovadas por curso e categoria.</p>
+          </div>
+        </div>
+        <div id="dash-breakdown-content"></div>
+      </section>
       <section class="content-card">
         <div class="section-head">
           <div>
@@ -277,19 +289,44 @@ export function attachCoordinatorPage(page, { render, navigate }) {
     initTelaValidacoes();
   }
 
-  // Preencher dados do Dashboard de forma assíncrona
   if (page === "coordinator-dashboard") {
     buscarDashboardApi().then((dash) => {
-      if (dash) {
-        document.getElementById("dash-alunos").textContent = dash.totalAlunos || dash.alunos || 0;
-        document.getElementById("dash-pendentes").textContent = dash.pendencias || dash.pendentes || 0;
-        document.getElementById("dash-horas").textContent = (dash.horasAprovadas || dash.horas || 0) + "h";
-        document.getElementById("dash-reprovadas").textContent = dash.submissoesReprovadas || dash.reprovadas || 0;
-      } else {
-        document.getElementById("dash-alunos").textContent = "0";
-        document.getElementById("dash-pendentes").textContent = "0";
-        document.getElementById("dash-horas").textContent = "0h";
-        document.getElementById("dash-reprovadas").textContent = "0";
+      const elAlunos = document.getElementById("dash-alunos");
+      const elPendentes = document.getElementById("dash-pendentes");
+      const elHoras = document.getElementById("dash-horas");
+      const elReprovadas = document.getElementById("dash-reprovadas");
+
+      if (!dash) {
+        if (elAlunos) elAlunos.textContent = "0";
+        if (elPendentes) elPendentes.textContent = "0";
+        if (elHoras) elHoras.textContent = "0h";
+        if (elReprovadas) elReprovadas.textContent = "0";
+        return;
+      }
+
+      if (elAlunos) elAlunos.textContent = dash.totalAlunos ?? dash.alunos ?? 0;
+      if (elPendentes) elPendentes.textContent = dash.totalPendentes ?? dash.pendencias ?? dash.pendentes ?? 0;
+      if (elHoras) elHoras.textContent = (dash.totalHorasAprovadas ?? dash.horasAprovadas ?? dash.horas ?? 0) + "h";
+      if (elReprovadas) elReprovadas.textContent = dash.totalReprovadas ?? dash.submissoesReprovadas ?? dash.reprovadas ?? 0;
+
+      const cursos = dash.porCurso || dash.cursos || [];
+      if (cursos.length) {
+        const breakdown = document.getElementById("dash-breakdown");
+        const content = document.getElementById("dash-breakdown-content");
+        if (breakdown && content) {
+          breakdown.hidden = false;
+          content.innerHTML = cursos
+            .map(
+              (curso) => `<div class="breakdown-curso">
+                <h4>${escapeHtml(String(curso.cursoNome || curso.nome || "Curso"))}</h4>
+                <p class="muted">${curso.alunos ?? 0} aluno(s) · ${curso.horasAprovadas ?? 0}h aprovadas · ${curso.pendentes ?? 0} pendente(s)</p>
+                ${Array.isArray(curso.porArea) && curso.porArea.length
+                  ? `<div class="table-wrap"><table class="custom-table"><thead><tr><th>Área</th><th>Horas Aprovadas</th></tr></thead><tbody>${curso.porArea.map((a) => `<tr><td>${escapeHtml(String(a.areaNome || a.area || "-"))}</td><td>${a.horasAprovadas ?? a.horas ?? 0}h</td></tr>`).join("")}</tbody></table></div>`
+                  : ""}
+              </div>`
+            )
+            .join("<hr>");
+        }
       }
     });
   }

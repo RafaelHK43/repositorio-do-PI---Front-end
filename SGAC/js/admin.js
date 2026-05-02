@@ -71,6 +71,18 @@ function pillsCount(text) {
 const COURSES_API_URL = "http://localhost:8080/api/cursos";
 const REGRAS_API_URL = "http://localhost:8080/api/regras";
 const USUARIOS_API_URL = "http://localhost:8080/api/usuarios";
+const DASHBOARD_API_URL = "http://localhost:8080/api/dashboard";
+
+async function buscarDashboardAdminApi() {
+  try {
+    const res = await fetch(DASHBOARD_API_URL, { headers: obterHeadersJsonComAuth() });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.error("Erro ao buscar dashboard admin:", e);
+    return null;
+  }
+}
 
 function obterTokenBasic() {
   return (
@@ -438,12 +450,18 @@ export function initTelaRegras() {
 
 function normalizarUsuario(usuario = {}) {
   const perfilRaw = String(usuario.perfil || usuario.role || "ALUNO").toUpperCase();
+  const cursoIds = Array.isArray(usuario.cursoIds)
+    ? usuario.cursoIds.map(Number).filter(Boolean)
+    : usuario.cursoId || usuario.idCurso
+    ? [Number(usuario.cursoId || usuario.idCurso)].filter(Boolean)
+    : [];
   return {
     id: Number(usuario.id || usuario.usuarioId || 0),
     nome: String(usuario.nome || usuario.name || "").trim(),
     email: String(usuario.email || "").trim(),
     perfil: perfilRaw,
-    cursoId: Number(usuario.cursoId || usuario.idCurso || 0) || null,
+    cursoIds,
+    cursoId: cursoIds[0] || null,
     cursoNome: String(usuario.cursoNome || usuario.nomeCurso || "").trim(),
   };
 }
@@ -456,11 +474,10 @@ function labelPerfil(perfil = "") {
 
 function criarLinhaUsuario(usuario, courseNameById = new Map()) {
   const item = normalizarUsuario(usuario);
-  const curso =
-    item.cursoNome ||
-    courseNameById.get(Number(item.cursoId)) ||
-    "Nao vinculado";
-  return `<tr><td><strong>${escapeHtml(item.nome)}</strong></td><td>${escapeHtml(item.email)}</td><td><span class="status-badge neutral">${labelPerfil(item.perfil)}</span></td><td>${escapeHtml(curso)}</td><td class="actions-cell"><button class="icon-btn edit btn-editar-usuario" type="button" data-usuario-id="${item.id}" aria-label="Editar usuario">✎</button><button class="icon-btn delete btn-excluir-usuario" type="button" data-usuario-id="${item.id}" aria-label="Excluir usuario">🗑</button></td></tr>`;
+  const cursoNomes = item.cursoIds.length
+    ? item.cursoIds.map((id) => courseNameById.get(Number(id)) || `ID ${id}`).join(", ")
+    : item.cursoNome || "Nao vinculado";
+  return `<tr><td><strong>${escapeHtml(item.nome)}</strong></td><td>${escapeHtml(item.email)}</td><td><span class="status-badge neutral">${labelPerfil(item.perfil)}</span></td><td>${escapeHtml(cursoNomes)}</td><td class="actions-cell"><button class="icon-btn edit btn-editar-usuario" type="button" data-usuario-id="${item.id}" aria-label="Editar usuario">✎</button><button class="icon-btn delete btn-excluir-usuario" type="button" data-usuario-id="${item.id}" aria-label="Excluir usuario">🗑</button></td></tr>`;
 }
 
 export function initTelaUsuarios() {
@@ -510,8 +527,10 @@ export function initTelaUsuarios() {
     inputNome.value = item.nome;
     inputEmail.value = item.email;
     selectPerfil.value = item.perfil || "ALUNO";
-    if (item.cursoId) {
-      selectCurso.value = String(item.cursoId);
+    if (item.cursoIds && item.cursoIds.length) {
+      Array.from(selectCurso.options).forEach((opt) => {
+        opt.selected = item.cursoIds.includes(Number(opt.value));
+      });
     }
     inputSenha.value = "";
     inputSenha.required = false;
@@ -637,11 +656,18 @@ export function initTelaUsuarios() {
     const method = isEdit ? "PUT" : "POST";
     const url = isEdit ? `${USUARIOS_API_URL}/${editId}` : USUARIOS_API_URL;
 
+    const selectedCursoIds = Array.from(selectCurso.selectedOptions)
+      .map((opt) => Number(opt.value))
+      .filter(Boolean);
+    if (!selectedCursoIds.length) {
+      alert("Selecione ao menos um curso.");
+      return;
+    }
     const payload = {
       nome: String(inputNome.value || "").trim(),
       email: String(inputEmail.value || "").trim(),
       perfil: String(selectPerfil.value || "ALUNO").toUpperCase(),
-      cursoId: Number(selectCurso.value || 0),
+      cursoIds: selectedCursoIds,
     };
 
     const senha = String(inputSenha.value || "").trim();
@@ -685,7 +711,7 @@ export function adminDashboardPage() {
     subtitle: "Resumo consolidado para coordenação e administração.",
     heroTitle: "Painel Geral",
     heroText: "Acompanhe as principais métricas e as solicitações mais recentes.",
-    content: `<section class="stats-grid four"><div class="stat-card blue"><span>Total de Alunos</span><strong>${data.students.length}</strong><em>🧑‍🎓</em></div><div class="stat-card orange"><span>Solicitações Pendentes</span><strong>${pendingCount}</strong><em>🕘</em></div><div class="stat-card green"><span>Total de Horas Validadas</span><strong>${approvedHours}h</strong><em>✓</em></div><div class="stat-card navy"><span>Cursos Ativos</span><strong>${data.courses.length}</strong><em>🎓</em></div></section><section class="content-card"><div class="section-head"><div><h3>Solicitações Recentes</h3><p class="muted">Últimas atividades enviadas pelos alunos.</p></div></div><div class="table-wrap"><table class="custom-table dashboard-table"><thead><tr><th>Nome do Aluno</th><th>Curso</th><th>Atividade</th><th>Data</th><th>Status</th></tr></thead><tbody>${recentRequestRows(data)}</tbody></table></div></section>`,
+    content: `<section class="stats-grid four"><div class="stat-card blue"><span>Total de Alunos</span><strong id="adash-alunos">${data.students.length}</strong><em>🧑‍🎓</em></div><div class="stat-card orange"><span>Solicitações Pendentes</span><strong id="adash-pendentes">${pendingCount}</strong><em>🕘</em></div><div class="stat-card green"><span>Total de Horas Validadas</span><strong id="adash-horas">${approvedHours}h</strong><em>✓</em></div><div class="stat-card navy"><span>Cursos Ativos</span><strong id="adash-cursos">${data.courses.length}</strong><em>🎓</em></div></section><section class="content-card"><div class="section-head"><div><h3>Solicitações Recentes</h3><p class="muted">Últimas atividades enviadas pelos alunos.</p></div></div><div class="table-wrap"><table class="custom-table dashboard-table"><thead><tr><th>Nome do Aluno</th><th>Curso</th><th>Atividade</th><th>Data</th><th>Status</th></tr></thead><tbody>${recentRequestRows(data)}</tbody></table></div></section><section id="adash-breakdown" class="content-card" hidden><div class="section-head"><div><h3>Resumo por Curso e Área</h3><p class="muted">Detalhamento das horas aprovadas por curso e categoria.</p></div></div><div id="adash-breakdown-content"></div></section>`,
   });
 }
 export function coursesPage(search = "") {
@@ -711,7 +737,7 @@ export function adminUsersPage(search = "", roleFilter = "all") {
     heroText: "A lista e o cadastro são sincronizados diretamente com a API de usuários.",
     heroAction:
       '<button class="btn btn-light" id="btn-novo-usuario" type="button">Novo Usuário</button>',
-    content: `<section class="content-card table-card"><div class="table-wrap"><table class="custom-table"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Curso Vinculado</th><th>Ações</th></tr></thead><tbody id="tbody-usuarios"><tr><td colspan="5" class="muted">Carregando usuarios...</td></tr></tbody></table></div></section>${pillsCount('<span id="usuarios-count">0 usuario(s) encontrado(s)</span>')}<div id="modal-usuario" class="modal-overlay" aria-hidden="true" hidden><div class="modal-card"><h3 id="titulo-modal-usuario">Novo Usuário</h3><form class="form-grid" id="form-usuario"><label for="input-usuario-nome">Nome<input id="input-usuario-nome" type="text" name="nome" required></label><label for="input-usuario-email">E-mail<input id="input-usuario-email" type="email" name="email" required></label><label for="input-usuario-senha">Senha<input id="input-usuario-senha" type="password" name="senha" required></label><label for="select-usuario-perfil">Perfil<select id="select-usuario-perfil" name="perfil" required><option value="ALUNO">ALUNO</option><option value="COORDENADOR">COORDENADOR</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></label><label for="select-usuario-curso">Curso<select id="select-usuario-curso" name="cursoId" required></select></label><div class="modal-actions"><button id="btn-cancelar-usuario" type="button" class="btn btn-outline">Cancelar</button><button id="btn-salvar-usuario" type="submit" class="btn btn-primary">Salvar</button></div></form></div></div>`,
+    content: `<section class="content-card table-card"><div class="table-wrap"><table class="custom-table"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Curso Vinculado</th><th>Ações</th></tr></thead><tbody id="tbody-usuarios"><tr><td colspan="5" class="muted">Carregando usuarios...</td></tr></tbody></table></div></section>${pillsCount('<span id="usuarios-count">0 usuario(s) encontrado(s)</span>')}<div id="modal-usuario" class="modal-overlay" aria-hidden="true" hidden><div class="modal-card"><h3 id="titulo-modal-usuario">Novo Usuário</h3><form class="form-grid" id="form-usuario"><label for="input-usuario-nome">Nome<input id="input-usuario-nome" type="text" name="nome" required></label><label for="input-usuario-email">E-mail<input id="input-usuario-email" type="email" name="email" required></label><label for="input-usuario-senha">Senha<input id="input-usuario-senha" type="password" name="senha" required></label><label for="select-usuario-perfil">Perfil<select id="select-usuario-perfil" name="perfil" required><option value="ALUNO">ALUNO</option><option value="COORDENADOR">COORDENADOR</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></label><label for="select-usuario-curso">Cursos (Ctrl+clique para múltiplos)<select id="select-usuario-curso" name="cursoIds" multiple size="4" style="height:auto;min-height:80px"></select></label><div class="modal-actions"><button id="btn-cancelar-usuario" type="button" class="btn btn-outline">Cancelar</button><button id="btn-salvar-usuario" type="submit" class="btn btn-primary">Salvar</button></div></form></div></div>`,
   });
 }
 export function coordinatorsPage(search = "") {
@@ -784,6 +810,40 @@ export function attachAdminPage(page, { render, navigate }) {
   }
   if (page === "admin-users") {
     initTelaUsuarios();
+  }
+
+  if (page === "admin-dashboard") {
+    buscarDashboardAdminApi().then((dash) => {
+      if (!dash) return;
+      const elAlunos = document.getElementById("adash-alunos");
+      const elPendentes = document.getElementById("adash-pendentes");
+      const elHoras = document.getElementById("adash-horas");
+      const elCursos = document.getElementById("adash-cursos");
+      if (elAlunos) elAlunos.textContent = dash.totalAlunos ?? dash.alunos ?? elAlunos.textContent;
+      if (elPendentes) elPendentes.textContent = dash.totalPendentes ?? dash.pendencias ?? dash.pendentes ?? elPendentes.textContent;
+      if (elHoras) elHoras.textContent = (dash.totalHorasAprovadas ?? dash.horasAprovadas ?? "") + "h";
+      if (elCursos) elCursos.textContent = dash.totalCursos ?? elCursos.textContent;
+
+      const cursos = dash.porCurso || dash.cursos || [];
+      if (cursos.length) {
+        const breakdown = document.getElementById("adash-breakdown");
+        const content = document.getElementById("adash-breakdown-content");
+        if (breakdown && content) {
+          breakdown.hidden = false;
+          content.innerHTML = cursos
+            .map(
+              (curso) => `<div class="breakdown-curso">
+                <h4>${escapeHtml(String(curso.cursoNome || curso.nome || "Curso"))}</h4>
+                <p class="muted">${curso.alunos ?? 0} aluno(s) · ${curso.horasAprovadas ?? 0}h aprovadas · ${curso.pendentes ?? 0} pendente(s)</p>
+                ${Array.isArray(curso.porArea) && curso.porArea.length
+                  ? `<div class="table-wrap"><table class="custom-table"><thead><tr><th>Área</th><th>Horas Aprovadas</th></tr></thead><tbody>${curso.porArea.map((a) => `<tr><td>${escapeHtml(String(a.areaNome || a.area || "-"))}</td><td>${a.horasAprovadas ?? a.horas ?? 0}h</td></tr>`).join("")}</tbody></table></div>`
+                  : ""}
+              </div>`
+            )
+            .join("<hr>");
+        }
+      }
+    });
   }
 
   const searchInputEl = document.querySelector("[data-search-input]");

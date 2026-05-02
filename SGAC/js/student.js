@@ -142,6 +142,14 @@ function renderCoursesInElement(element, courses) {
   if (list) renderCoursesInElement(list, courses);
 }
 
+function toEnumKey(str) {
+  return String(str)
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, "_");
+}
+
 function renderAreaOptions(areaSelect, courseId, areas) {
   if (!areaSelect) return;
   const filteredAreas = areas.filter(
@@ -149,9 +157,10 @@ function renderAreaOptions(areaSelect, courseId, areas) {
   );
   areaSelect.innerHTML = filteredAreas.length
     ? filteredAreas
-        .map(
-          (area) => `<option value="${area.id}">${escapeHtml(area.name)}</option>`
-        )
+        .map((area) => {
+          const enumVal = area.enumKey || toEnumKey(area.name);
+          return `<option value="${enumVal}">${escapeHtml(area.name)}</option>`;
+        })
         .join("")
     : '<option value="">Nenhuma área disponível</option>';
 }
@@ -204,7 +213,7 @@ export async function salvarSubmissao(formElement, navigate) {
 
   const fd = new FormData(formElement);
   const courseId = Number(fd.get("courseId"));
-  const areaId = Number(fd.get("areaId"));
+  const areaId = String(fd.get("areaId") || "").trim();
   const title = String(fd.get("title") || "").trim();
   const description = String(fd.get("description") || "").trim();
   const workload = Number(fd.get("workload"));
