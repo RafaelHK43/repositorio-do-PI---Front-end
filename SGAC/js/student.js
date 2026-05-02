@@ -20,6 +20,8 @@ import {
 
 const API_BASE_URL = "http://localhost:8080/api";
 
+let activeCourseId = null;
+
 /**
  * Obtém os headers de autenticação com token Basic armazenado no localStorage
  * @returns {Object} Headers com Authorization e Accept
@@ -165,6 +167,28 @@ function renderAreaOptions(areaSelect, courseId, areas) {
     : '<option value="">Nenhuma área disponível</option>';
 }
 
+async function carregarRegrasParaSelect(cursoId, areaSelect) {
+  if (!areaSelect || !cursoId) return;
+  areaSelect.innerHTML = '<option value="">Carregando áreas...</option>';
+  try {
+    const res = await fetch(`${API_BASE_URL}/regras/curso/${cursoId}`, { headers: obterHeaders() });
+    if (!res.ok) throw new Error("Falha ao carregar regras");
+    const regras = await res.json();
+    if (!Array.isArray(regras) || !regras.length) {
+      areaSelect.innerHTML = '<option value="">Nenhuma área disponível</option>';
+      return;
+    }
+    areaSelect.innerHTML = regras.map((r) => {
+      const val = String(r.area || "").trim();
+      const label = val.charAt(0) + val.slice(1).toLowerCase().replace(/_/g, " ");
+      return `<option value="${escapeHtml(val)}">${escapeHtml(label)}</option>`;
+    }).join("");
+  } catch {
+    areaSelect.innerHTML = '<option value="">Erro ao carregar áreas</option>';
+    showToast("Não foi possível carregar as áreas do curso.", "danger");
+  }
+}
+
 async function getApiErrorMessage(response, fallback) {
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
@@ -297,68 +321,83 @@ async function getStudentContextAsync() {
   return { user: student, data, activities, primaryCourseId };
 }
 
-export function studentDashboardPage() {
-  const { user, data, activities, primaryCourseId } = getStudentContext();
-  const approved = activities.filter((item) => item.status === "aprovada");
-  const pending = activities.filter((item) => item.status === "pendente");
-  const rejected = activities.filter((item) => item.status === "reprovada");
-  const hours = approved.reduce(
-    (total, item) => total + Number(item.workload),
-    0
-  );
-  const required =
-    data.courses.find((course) => Number(course.id) === Number(primaryCourseId))
-      ?.workload_required || 200;
+export async function studentDashboardPage() {
+  const user = getUser();
+  const data = getData();
+  const student = data.students.find((s) => Number(s.id) === Number(user.id)) || user;
+
+  // Buscar cursos do aluno via API
+  let availableCourses = [];
+  try {
+    const res = await fetch(`${API_BASE_URL}/usuarios/${user.id}`, { headers: obterHeaders() });
+    if (res.ok) {
+      const userData = await res.json();
+      const ids = Array.isArray(userData.cursoIds)
+        ? userData.cursoIds.map(Number)
+        : Array.isArray(userData.cursos)
+        ? userData.cursos.map((c) => Number(c.id))
+        : (student.courseIds || []).map(Number);
+      const allRes = await fetch(`${API_BASE_URL}/cursos`, { headers: obterHeaders() });
+      if (allRes.ok) {
+        const all = await allRes.json();
+        availableCourses = Array.isArray(all)
+          ? all.filter((c) => !ids.length || ids.includes(Number(c.id)))
+          : [];
+      }
+    }
+  } catch { /* fallback: sem cursos */ }
+
+  // Resolver curso ativo
+  if (!activeCourseId || !availableCourses.some((c) => Number(c.id) === Number(activeCourseId))) {
+    activeCourseId = availableCourses[0]?.id || student.courseIds?.[0] || null;
+  }
+
+  // Buscar submissões reais
+  const activities = await buscarSubmissoesDoAluno(student.id || user.id);
+  const courseActivities = activeCourseId
+    ? activities.filter((a) => Number(a.courseId) === Number(activeCourseId))
+    : activities;
+
+  const approved = courseActivities.filter((a) => String(a.status).toUpperCase() === "APROVADA");
+  const pending  = courseActivities.filter((a) => String(a.status).toUpperCase() === "PENDENTE");
+  const rejected = courseActivities.filter((a) => String(a.status).toUpperCase() === "REPROVADA");
+  const hours    = approved.reduce((t, a) => t + Number(a.workload), 0);
+
+  const activeCourse = availableCourses.find((c) => Number(c.id) === Number(activeCourseId));
+  const required = Number(activeCourse?.cargaHorariaMinima || activeCourse?.workload_required || 200);
   const progress = Math.min(100, Math.round((hours / required) * 100));
+  const courseName = escapeHtml(activeCourse?.nome || activeCourse?.name || getCourseName(activeCourseId, data));
+
+  // Seletor de curso (Problema 5)
+  const courseSelectorHtml = availableCourses.length > 1
+    ? `<section class="content-card compact"><label style="display:flex;align-items:center;gap:.5rem;font-weight:600">Curso ativo: <select id="student-course-select" style="flex:1">${availableCourses.map((c) => `<option value="${c.id}" ${Number(c.id) === Number(activeCourseId) ? "selected" : ""}>${escapeHtml(c.nome || c.name || "")}</option>`).join("")}</select></label></section>`
+    : "";
+
+  // Breakdown por área (Problema 7)
+  const areaMap = new Map();
+  approved.forEach((a) => { const k = String(a.areaId || "").trim(); if (k) areaMap.set(k, (areaMap.get(k) || 0) + Number(a.workload)); });
+  pending.forEach((a)  => { const k = String(a.areaId || "").trim(); if (k && !areaMap.has(k)) areaMap.set(k, 0); });
+  const areaBreakdownHtml = areaMap.size
+    ? `<section class="content-card"><h3>Horas por Área</h3><div class="cards-grid">${[...areaMap.entries()].map(([area, h]) => { const label = area.charAt(0) + area.slice(1).toLowerCase().replace(/_/g, " "); return `<div class="summary-card"><strong>${escapeHtml(label)}</strong><span>${h}h aprovadas</span></div>`; }).join("")}</div></section>`
+    : "";
+
   return shell({
     roleLabel: "Atividades Complementares",
     navItems: studentNav,
-    content: `<section class="student-welcome-banner"><div class="student-banner-icon">🏅</div><div><h3>Olá, ${escapeHtml(
-      user.name
-    )}!</h3><p>Acompanhe suas atividades e o progresso no curso ${escapeHtml(
-      getCourseName(primaryCourseId, data)
-    )}.</p></div></section><section class="student-stats-grid"><div class="student-stat-card"><span>Total de Atividades</span><strong>${
-      activities.length
-    }</strong><em>🏅</em></div><div class="student-stat-card success"><span>Aprovadas</span><strong>${
-      approved.length
-    }</strong><em>✓</em></div><div class="student-stat-card warning"><span>Pendentes</span><strong>${
-      pending.length
-    }</strong><em>🕘</em></div><div class="student-stat-card info"><span>Reprovadas</span><strong>${
-      rejected.length
-    }</strong><em>✕</em></div></section><section class="content-card student-progress-card"><div class="student-progress-head"><div><h3>Progresso Geral</h3><p>Meta: ${required}h obrigatórias</p></div><span class="student-progress-badge">${progress}%</span></div><div class="student-progress-bar"><div style="width:${progress}%"></div></div><p class="student-progress-text">${hours}h concluídas de ${required}h. Faltam <strong>${Math.max(
-      required - hours,
-      0
-    )}h</strong>.</p></section><section class="content-card"><h3>Ações rápidas</h3><div class="quick-actions"><button class="quick-card quick-card-warm" data-go="student-add">Adicionar Atividade<span>Registrar nova solicitação</span></button><button class="quick-card" data-go="student-activities">Minhas Atividades<span>Acompanhar status</span></button></div></section>`,
+    content: `${courseSelectorHtml}<section class="student-welcome-banner"><div class="student-banner-icon">🏅</div><div><h3>Olá, ${escapeHtml(student.name || student.nome || "Aluno")}!</h3><p>Acompanhe suas atividades e o progresso no curso ${courseName}.</p></div></section><section class="student-stats-grid"><div class="student-stat-card"><span>Total de Atividades</span><strong>${courseActivities.length}</strong><em>🏅</em></div><div class="student-stat-card success"><span>Aprovadas</span><strong>${approved.length}</strong><em>✓</em></div><div class="student-stat-card warning"><span>Pendentes</span><strong>${pending.length}</strong><em>🕘</em></div><div class="student-stat-card info"><span>Reprovadas</span><strong>${rejected.length}</strong><em>✕</em></div></section><section class="content-card student-progress-card"><div class="student-progress-head"><div><h3>Progresso Geral</h3><p>Meta: ${required}h obrigatórias</p></div><span class="student-progress-badge">${progress}%</span></div><div class="student-progress-bar"><div style="width:${progress}%"></div></div><p class="student-progress-text">${hours}h concluídas de ${required}h. Faltam <strong>${Math.max(required - hours, 0)}h</strong>.</p></section>${areaBreakdownHtml}<section class="content-card"><h3>Ações rápidas</h3><div class="quick-actions"><button class="quick-card quick-card-warm" data-go="student-add">Adicionar Atividade<span>Registrar nova solicitação</span></button><button class="quick-card" data-go="student-activities">Minhas Atividades<span>Acompanhar status</span></button></div></section>`,
   });
 }
 
 function activityModal(student) {
   const data = getData();
-  const courseId = student.courseIds?.[0] || data.courses[0]?.id;
-  const areas = data.areas.filter(
-    (area) => Number(area.courseId) === Number(courseId)
-  );
-  const courseSource =
-    Array.isArray(student.courseIds) && student.courseIds.length
-      ? student.courseIds
-      : data.courses.map((course) => course.id);
+  const courseId = activeCourseId || student.courseIds?.[0] || data.courses[0]?.id;
+  const courseSource = Array.isArray(student.courseIds) && student.courseIds.length
+    ? student.courseIds
+    : data.courses.map((course) => course.id);
   const courseOptions = courseSource
-    .map(
-      (id) =>
-        `<option value="${id}" ${
-          Number(id) === Number(courseId) ? "selected" : ""
-        }>${escapeHtml(getCourseName(id, data))}</option>`
-    )
+    .map((id) => `<option value="${id}" ${Number(id) === Number(courseId) ? "selected" : ""}>${escapeHtml(getCourseName(id, data))}</option>`)
     .join("");
-  return `<h3>Nova Atividade</h3><form class="form-grid" id="activityForm"><label>Curso<select name="courseId" id="activityCourseSelect" data-cursos-select>${courseOptions}</select></label><label>Área<select name="areaId" id="activityAreaSelect">${areas
-    .map(
-      (area) => `<option value="${area.id}">${escapeHtml(area.name)}</option>`
-    )
-    .join(
-      ""
-    )}</select></label><label>Título<input type="text" name="title" required></label><label>Carga Horária<input type="number" min="1" name="workload" required></label><label>Data da Atividade<input type="date" name="activityDate" required></label><label class="full-span">Descrição<textarea name="description" rows="4" required></textarea></label><label class="full-span">Certificado<input type="file" name="certificado" accept=".pdf,.png,.jpg,.jpeg"></label>${modalActions(
-    "Enviar Solicitação"
-  )}</form>`;
+  return `<h3>Nova Atividade</h3><form class="form-grid" id="activityForm"><label>Curso<select name="courseId" id="activityCourseSelect" data-cursos-select>${courseOptions}</select></label><label>Área<select name="areaId" id="activityAreaSelect"><option value="">Carregando áreas...</option></select></label><label>Título<input type="text" name="title" required></label><label>Carga Horária<input type="number" min="1" name="workload" required></label><label>Data da Atividade<input type="date" name="activityDate" required></label><label class="full-span">Descrição<textarea name="description" rows="4" required></textarea></label><label class="full-span">Certificado<input type="file" name="certificado" accept=".pdf,.png,.jpg,.jpeg"></label>${modalActions("Enviar Solicitação")}</form>`;
 }
 
 export function studentActivitiesPage() {
@@ -521,27 +560,29 @@ export function attachStudentPage(page, { render, navigate }) {
     });
   }
 
+  if (page === "student-dashboard") {
+    document.getElementById("student-course-select")?.addEventListener("change", (e) => {
+      activeCourseId = Number(e.target.value);
+      navigate("student-dashboard");
+    });
+  }
+
   document.querySelectorAll("[data-open-activity]").forEach((button) =>
     button.addEventListener("click", async () => {
       openModal(activityModal(user));
       bindModalClose();
       const courseSelect = document.getElementById("activityCourseSelect");
       const areaSelect = document.getElementById("activityAreaSelect");
-      courseSelect?.addEventListener("change", () => {
-        renderAreaOptions(areaSelect, courseSelect.value, data.areas);
-      });
       const cursos = await carregarCursos(courseSelect);
-      renderAreaOptions(
-        areaSelect,
-        courseSelect?.value || cursos[0]?.id || data.courses[0]?.id,
-        data.areas
-      );
-      document
-        .getElementById("activityForm")
-        ?.addEventListener("submit", async (event) => {
-          event.preventDefault();
-          await salvarSubmissao(event.currentTarget, navigate);
-        });
+      const initialCourseId = courseSelect?.value || cursos[0]?.id;
+      await carregarRegrasParaSelect(initialCourseId, areaSelect);
+      courseSelect?.addEventListener("change", async () => {
+        await carregarRegrasParaSelect(courseSelect.value, areaSelect);
+      });
+      document.getElementById("activityForm")?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await salvarSubmissao(event.currentTarget, navigate);
+      });
     })
   );
   

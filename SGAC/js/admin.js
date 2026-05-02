@@ -481,6 +481,8 @@ function normalizarUsuario(usuario = {}) {
   const perfilRaw = String(usuario.perfil || usuario.role || "ALUNO").toUpperCase();
   const cursoIds = Array.isArray(usuario.cursoIds)
     ? usuario.cursoIds.map(Number).filter(Boolean)
+    : Array.isArray(usuario.cursos)
+    ? usuario.cursos.map((c) => Number(c.id)).filter(Boolean)
     : usuario.cursoId || usuario.idCurso
     ? [Number(usuario.cursoId || usuario.idCurso)].filter(Boolean)
     : [];
@@ -845,7 +847,7 @@ export function attachAdminPage(page, { render, navigate }) {
       if (elHoras) elHoras.textContent = (dash.totalHorasAprovadas ?? dash.horasAprovadas ?? 0) + "h";
       if (elCursos) elCursos.textContent = dash.totalCursos ?? 0;
 
-      const cursos = dash.porCurso || dash.cursos || [];
+      const cursos = dash.metricasPorCurso || [];
       if (cursos.length) {
         const breakdown = document.getElementById("adash-breakdown");
         const content = document.getElementById("adash-breakdown-content");
@@ -854,10 +856,10 @@ export function attachAdminPage(page, { render, navigate }) {
           content.innerHTML = cursos
             .map(
               (curso) => `<div class="breakdown-curso">
-                <h4>${escapeHtml(String(curso.cursoNome || curso.nome || "Curso"))}</h4>
+                <h4>${escapeHtml(String(curso.cursoNome || "Curso"))}</h4>
                 <p class="muted">${curso.alunos ?? 0} aluno(s) · ${curso.horasAprovadas ?? 0}h aprovadas · ${curso.pendentes ?? 0} pendente(s)</p>
-                ${Array.isArray(curso.porArea) && curso.porArea.length
-                  ? `<div class="table-wrap"><table class="custom-table"><thead><tr><th>Área</th><th>Horas Aprovadas</th></tr></thead><tbody>${curso.porArea.map((a) => `<tr><td>${escapeHtml(String(a.areaNome || a.area || "-"))}</td><td>${a.horasAprovadas ?? a.horas ?? 0}h</td></tr>`).join("")}</tbody></table></div>`
+                ${Array.isArray(curso.metricasPorArea) && curso.metricasPorArea.length
+                  ? `<div class="table-wrap"><table class="custom-table"><thead><tr><th>Área</th><th>Horas Aprovadas</th></tr></thead><tbody>${curso.metricasPorArea.map((a) => `<tr><td>${escapeHtml(String(a.area || "-"))}</td><td>${a.horasAprovadas ?? 0}h</td></tr>`).join("")}</tbody></table></div>`
                   : ""}
               </div>`
             )

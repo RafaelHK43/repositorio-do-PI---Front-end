@@ -126,9 +126,22 @@ function render() {
   const allowed = validPagesByRole(user.role);
   const finalPage = allowed.includes(page) ? page : allowed[0];
   setPage(finalPage);
-  app.innerHTML = (pageRenderer(finalPage) || studentDashboardPage)();
-  attachShellEvents({ onNavigate: navigate, onLogout: logout });
-  attachPageHandlers(finalPage);
+
+  const finalize = (html) => {
+    app.innerHTML = html;
+    attachShellEvents({ onNavigate: navigate, onLogout: logout });
+    attachPageHandlers(finalPage);
+  };
+
+  const renderer = pageRenderer(finalPage) || studentDashboardPage;
+  const result = renderer();
+  if (result instanceof Promise) {
+    result.then(finalize).catch(() => {
+      finalize("<p class='muted' style='padding:2rem'>Erro ao carregar a página. Tente novamente.</p>");
+    });
+  } else {
+    finalize(result);
+  }
 }
 registerPWA();
 render();

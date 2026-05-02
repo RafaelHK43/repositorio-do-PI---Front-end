@@ -1,6 +1,7 @@
 import { coordinatorNav } from "./config.js";
 import { escapeHtml, formatDate } from "./utils.js";
-import { emptyState, shell } from "./ui.js";
+import { emptyState, shell, showToast } from "./ui.js";
+import { getUser } from "./state.js";
 
 const API_BASE_URL = "http://localhost:8080/api";
 const SUBMISSOES_API_URL = `${API_BASE_URL}/submissoes`;
@@ -283,10 +284,25 @@ export function coordinatorStudentsPage() {
     navItems: coordinatorNav,
     title: "Alunos do Curso",
     subtitle: "Carregando lista de alunos...",
+    heroAction: '<button class="btn btn-light" id="btn-novo-aluno-coord" type="button">+ Novo Aluno</button>',
     content: `
       <section id="students-grid" class="cards-grid single-column-mobile">
         <p class="muted">Carregando alunos vinculados a você...</p>
       </section>
+      <div id="modal-novo-aluno-coord" class="modal-overlay" aria-hidden="true" hidden>
+        <div class="modal-card">
+          <h3>Cadastrar Novo Aluno</h3>
+          <form class="form-grid" id="form-novo-aluno-coord">
+            <label for="input-aluno-nome">Nome Completo<input id="input-aluno-nome" type="text" name="nome" required></label>
+            <label for="input-aluno-email">E-mail<input id="input-aluno-email" type="email" name="email" required></label>
+            <label for="input-aluno-senha">Senha<input id="input-aluno-senha" type="password" name="senha" required></label>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-outline" id="btn-cancelar-novo-aluno">Cancelar</button>
+              <button type="submit" class="btn btn-primary">Cadastrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
     `,
   });
 }
@@ -316,7 +332,7 @@ export function attachCoordinatorPage(page, { render, navigate }) {
       if (elHoras) elHoras.textContent = (dash.totalHorasAprovadas ?? dash.horasAprovadas ?? dash.horas ?? 0) + "h";
       if (elReprovadas) elReprovadas.textContent = dash.totalReprovadas ?? dash.submissoesReprovadas ?? dash.reprovadas ?? 0;
 
-      const cursos = dash.porCurso || dash.cursos || [];
+      const cursos = dash.metricasPorCurso || [];
       if (cursos.length) {
         const breakdown = document.getElementById("dash-breakdown");
         const content = document.getElementById("dash-breakdown-content");
@@ -325,10 +341,10 @@ export function attachCoordinatorPage(page, { render, navigate }) {
           content.innerHTML = cursos
             .map(
               (curso) => `<div class="breakdown-curso">
-                <h4>${escapeHtml(String(curso.cursoNome || curso.nome || "Curso"))}</h4>
+                <h4>${escapeHtml(String(curso.cursoNome || "Curso"))}</h4>
                 <p class="muted">${curso.alunos ?? 0} aluno(s) · ${curso.horasAprovadas ?? 0}h aprovadas · ${curso.pendentes ?? 0} pendente(s)</p>
-                ${Array.isArray(curso.porArea) && curso.porArea.length
-                  ? `<div class="table-wrap"><table class="custom-table"><thead><tr><th>Área</th><th>Horas Aprovadas</th></tr></thead><tbody>${curso.porArea.map((a) => `<tr><td>${escapeHtml(String(a.areaNome || a.area || "-"))}</td><td>${a.horasAprovadas ?? a.horas ?? 0}h</td></tr>`).join("")}</tbody></table></div>`
+                ${Array.isArray(curso.metricasPorArea) && curso.metricasPorArea.length
+                  ? `<div class="table-wrap"><table class="custom-table"><thead><tr><th>Área</th><th>Horas Aprovadas</th></tr></thead><tbody>${curso.metricasPorArea.map((a) => `<tr><td>${escapeHtml(String(a.area || "-"))}</td><td>${a.horasAprovadas ?? 0}h</td></tr>`).join("")}</tbody></table></div>`
                   : ""}
               </div>`
             )
@@ -338,46 +354,75 @@ export function attachCoordinatorPage(page, { render, navigate }) {
     });
   }
 
-  // Preencher dados dos alunos de forma assíncrona
   if (page === "coordinator-students") {
-    buscarAlunosApi().then((alunos) => {
+    function renderAlunos(alunos) {
       const grid = document.getElementById("students-grid");
       if (!grid) return;
-
       if (!alunos || alunos.length === 0) {
-        grid.innerHTML = emptyState({
-          icon: "🎓",
-          title: "Nenhum aluno vinculado",
-          text: "Não há alunos registrados nos seus cursos.",
-        });
+        grid.innerHTML = emptyState({ icon: "🎓", title: "Nenhum aluno vinculado", text: "Não há alunos registrados nos seus cursos." });
         return;
       }
-
       grid.innerHTML = alunos.map((student) => {
-        const cursosList = Array.isArray(student.cursos) 
-          ? student.cursos.map(c => c.nome || c.name).join(", ") 
+        const cursosList = Array.isArray(student.cursos)
+          ? student.cursos.map((c) => c.nome || c.name).join(", ")
           : "Curso não especificado";
-
-        return `
-          <article class="person-card">
-            <div class="person-avatar">🎓</div>
-            <div class="person-body">
-              <div class="person-head no-actions">
-                <div>
-                  <h3>${escapeHtml(student.nome || student.name || "Aluno")}</h3>
-                  <p>${escapeHtml(student.email || "")}</p>
-                </div>
-              </div>
-              <hr>
-              <span class="person-meta">${escapeHtml(cursosList)}</span>
-            </div>
-          </article>
-        `;
+        return `<article class="person-card"><div class="person-avatar">🎓</div><div class="person-body"><div class="person-head no-actions"><div><h3>${escapeHtml(student.nome || student.name || "Aluno")}</h3><p>${escapeHtml(student.email || "")}</p></div></div><hr><span class="person-meta">${escapeHtml(cursosList)}</span></div></article>`;
       }).join("");
-      
-      // Atualiza o subtítulo se a classe existir no header padrão do shell
       const subtitleEl = document.querySelector(".page-head p");
       if (subtitleEl) subtitleEl.textContent = `${alunos.length} aluno(s) encontrados`;
+    }
+
+    buscarAlunosApi().then(renderAlunos);
+
+    const modal = document.getElementById("modal-novo-aluno-coord");
+    const formNovoAluno = document.getElementById("form-novo-aluno-coord");
+    const btnNovo = document.getElementById("btn-novo-aluno-coord");
+    const btnCancelar = document.getElementById("btn-cancelar-novo-aluno");
+
+    function abrirModal() { if (modal) { modal.hidden = false; modal.setAttribute("aria-hidden", "false"); } }
+    function fecharModal() { if (modal) { modal.hidden = true; modal.setAttribute("aria-hidden", "true"); formNovoAluno?.reset(); } }
+
+    btnNovo?.addEventListener("click", abrirModal);
+    btnCancelar?.addEventListener("click", fecharModal);
+    modal?.addEventListener("click", (e) => { if (e.target === modal) fecharModal(); });
+
+    formNovoAluno?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const user = getUser();
+      let cursoIds = [];
+      try {
+        const res = await fetch(`${API_BASE_URL}/usuarios/${user.id}`, { headers: obterHeadersJsonComAuth() });
+        if (res.ok) {
+          const coordData = await res.json();
+          cursoIds = Array.isArray(coordData.cursoIds)
+            ? coordData.cursoIds.map(Number).filter(Boolean)
+            : Array.isArray(coordData.cursos)
+            ? coordData.cursos.map((c) => Number(c.id)).filter(Boolean)
+            : [];
+        }
+      } catch { /* usa cursoIds vazio */ }
+
+      const payload = {
+        nome: String(document.getElementById("input-aluno-nome")?.value || "").trim(),
+        email: String(document.getElementById("input-aluno-email")?.value || "").trim(),
+        senha: String(document.getElementById("input-aluno-senha")?.value || "").trim(),
+        perfil: "ALUNO",
+        cursoIds,
+      };
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/usuarios`, {
+          method: "POST",
+          headers: obterHeadersJsonComAuth(),
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error("Falha ao cadastrar aluno");
+        fecharModal();
+        showToast("Aluno cadastrado com sucesso.", "success");
+        buscarAlunosApi().then(renderAlunos);
+      } catch {
+        alert("Não foi possível cadastrar o aluno.");
+      }
     });
   }
 }
