@@ -13,7 +13,7 @@ export const STORAGE_KEYS = {
 };
 export const API_BASE_URL =
   document.querySelector('meta[name="sgac-api-base"]')?.content ||
-  "http://localhost:8080/api";
+  "https://repositorio-do-pi-back-end-gvt2.onrender.com/api";
 export const initialData = {
   courses: [
     {

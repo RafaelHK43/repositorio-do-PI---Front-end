@@ -177,7 +177,7 @@ export function initTelaCursos() {
       const count = document.getElementById("cursos-count");
       if (count) count.textContent = `${cursos.length} curso(s) encontrado(s)`;
     } catch (error) {
-      showToast("Não foi possível carregar os cursos. Verifique se o back está rodando na porta 8080.", "danger");
+      showToast("Não foi possível carregar os cursos. Verifique sua conexão ou tente novamente em instantes.", "danger");
     }
   }
 

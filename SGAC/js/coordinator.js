@@ -168,7 +168,7 @@ export function initTelaValidacoes() {
 
       if (count) count.textContent = `${pendentes.length} submissão(ões) pendente(s)`;
     } catch (error) {
-      showToast("Não foi possível carregar as submissões. Verifique se o back está rodando na porta 8080.", "danger");
+      showToast("Não foi possível carregar as submissões. Verifique sua conexão ou tente novamente em instantes.", "danger");
       console.error(error);
     }
   }
