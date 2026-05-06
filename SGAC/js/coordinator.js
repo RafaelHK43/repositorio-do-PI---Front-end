@@ -208,7 +208,7 @@ export function initTelaValidacoes() {
         });
         if (!response.ok) throw new Error("Falha ao aprovar submissão");
 
-        showToast("Status atualizado. O aluno será notificado por e-mail.", "success");
+        showToast("Atividade aprovada! O aluno será notificado por e-mail.", "success");
         await carregarSubmissoesPendentes();
       } catch (error) {
         showToast("Não foi possível aprovar a submissão.", "danger");
@@ -230,7 +230,7 @@ export function initTelaValidacoes() {
         });
         if (!response.ok) throw new Error("Falha ao reprovar submissão");
 
-        showToast("Status atualizado. O aluno será notificado por e-mail.", "success");
+        showToast("Atividade reprovada. O aluno será notificado por e-mail com o motivo.", "success");
         await carregarSubmissoesPendentes();
       } catch (error) {
         showToast("Não foi possível reprovar a submissão.", "danger");
@@ -407,10 +407,10 @@ export function attachCoordinatorPage(page, { render, navigate }) {
         return;
       }
 
-      if (elAlunos) elAlunos.textContent = dash.totalAlunos ?? dash.alunos ?? 0;
-      if (elPendentes) elPendentes.textContent = dash.totalPendentes ?? dash.pendencias ?? dash.pendentes ?? 0;
-      if (elHoras) elHoras.textContent = (dash.totalHorasAprovadas ?? dash.horasAprovadas ?? dash.horas ?? 0) + "h";
-      if (elReprovadas) elReprovadas.textContent = dash.totalReprovadas ?? dash.submissoesReprovadas ?? dash.reprovadas ?? 0;
+      if (elAlunos) elAlunos.textContent = dash.totalAlunos ?? 0;
+      if (elPendentes) elPendentes.textContent = dash.totalPendentes ?? 0;
+      if (elHoras) elHoras.textContent = (dash.totalHorasAprovadas ?? 0) + "h";
+      if (elReprovadas) elReprovadas.textContent = dash.totalReprovadas ?? 0;
 
       const cursos = dash.metricasPorCurso || [];
       if (cursos.length) {

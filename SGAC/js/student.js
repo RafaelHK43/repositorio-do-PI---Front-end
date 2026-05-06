@@ -138,11 +138,14 @@ export async function carregarCursos(target = null) {
   try {
     const response = await fetch(`${API_BASE_URL}/cursos`, { headers: obterHeaders() });
     if (!response.ok) {
-      throw new Error(
-        await getApiErrorMessage(response, "Não foi possível carregar os cursos."),
-      );
+      throw new Error(await getApiErrorMessage(response, "Não foi possível carregar os cursos."));
     }
     const cursos = await response.json();
+
+    // FILTRO: aluno só vê seus cursos
+    const user = getUser();
+    const cursoIdsDoAluno = (user?.courseIds || []).map(Number);
+
     const normalized = Array.isArray(cursos)
       ? cursos
           .map((c) => ({
@@ -151,6 +154,9 @@ export async function carregarCursos(target = null) {
             cargaHorariaMinima: c.cargaHorariaMinima ?? 0,
           }))
           .filter((c) => c.id !== "")
+          .filter((c) =>
+            cursoIdsDoAluno.length === 0 || cursoIdsDoAluno.includes(Number(c.id)),
+          )
       : [];
 
     if (target) {
@@ -158,9 +164,8 @@ export async function carregarCursos(target = null) {
       if (el && el.matches("select")) {
         el.innerHTML = normalized.length
           ? normalized
-              .map(
-                (c, i) =>
-                  `<option value="${c.id}" ${i === 0 ? "selected" : ""}>${escapeHtml(c.name)}</option>`,
+              .map((c, i) =>
+                `<option value="${c.id}" ${i === 0 ? "selected" : ""}>${escapeHtml(c.name)}</option>`,
               )
               .join("")
           : '<option value="">Nenhum curso disponível</option>';

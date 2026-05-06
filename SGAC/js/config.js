@@ -11,9 +11,12 @@ export const STORAGE_KEYS = {
   user: "sgac_modular_user",
   page: "sgac_modular_page",
 };
+
+// URL ATUALIZADA PARA O SEU NOVO BACK-END NO RENDER
 export const API_BASE_URL =
   document.querySelector('meta[name="sgac-api-base"]')?.content ||
-  "https://repositorio-do-pi-back-end-gvt2.onrender.com/api";
+  "https://api-sgac-gustavo.onrender.com/api";
+
 export const initialData = {
   courses: [
     {
@@ -129,23 +132,27 @@ export const initialData = {
     },
   ],
 };
+
 export const adminNav = [
   { label: "Dashboard", page: "admin-dashboard", icon: "⌂" },
   { label: "Cursos", page: "courses", icon: "🎓" },
   { label: "Usuários", page: "admin-users", icon: "👥" },
   { label: "Regras", page: "admin-areas", icon: "📘" },
 ];
+
 export const coordinatorNav = [
   { label: "Dashboard", page: "coordinator-dashboard", icon: "⌂" },
   { label: "Validar Certificados", page: "coordinator-validate", icon: "📝" },
   { label: "Alunos", page: "coordinator-students", icon: "🧑‍🎓" },
 ];
+
 export const studentNav = [
   { label: "Início", page: "student-dashboard", icon: "⌂" },
   { label: "Adicionar", page: "student-add", icon: "+" },
   { label: "Minhas Atividades", page: "student-activities", icon: "🗂" },
   { label: "Regras do Curso", page: "student-rules", icon: "📖" },
 ];
+
 export const studentRulesReference = [
   {
     id: 1,

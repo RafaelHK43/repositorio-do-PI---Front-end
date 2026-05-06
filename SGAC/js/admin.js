@@ -909,9 +909,9 @@ export function attachAdminPage(page, { render, navigate }) {
         return;
       }
 
-      if (elAlunos) elAlunos.textContent = dash.totalAlunos ?? dash.alunos ?? 0;
-      if (elPendentes) elPendentes.textContent = dash.submissoesPendentes ?? dash.totalPendentes ?? dash.pendentes ?? 0;
-      if (elHoras) elHoras.textContent = (dash.horasAprovadas ?? dash.totalHorasAprovadas ?? 0) + "h";
+      if (elAlunos) elAlunos.textContent = dash.totalAlunos ?? 0;
+      if (elPendentes) elPendentes.textContent = dash.submissoesPendentes ?? 0;
+      if (elHoras) elHoras.textContent = (dash.horasAprovadas ?? 0) + "h";
       if (elCursos) elCursos.textContent = dash.totalCursos ?? 0;
 
       const cursos = dash.metricasPorCurso || [];
