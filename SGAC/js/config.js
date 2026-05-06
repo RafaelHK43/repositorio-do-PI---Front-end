@@ -12,10 +12,7 @@ export const STORAGE_KEYS = {
   page: "sgac_modular_page",
 };
 
-// URL ATUALIZADA PARA O SEU NOVO BACK-END NO RENDER
-export const API_BASE_URL =
-  document.querySelector('meta[name="sgac-api-base"]')?.content ||
-  "https://api-sgac-gustavo.onrender.com/api";
+export const API_BASE_URL = "https://api-sgac-gustavo.onrender.com/api";
 
 export const initialData = {
   courses: [
